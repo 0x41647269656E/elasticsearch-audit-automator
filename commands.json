@@ -1,0 +1,40 @@
+{
+  "version": "1.0",
+  "commands": [
+    {
+      "name": "cluster-health",
+      "description": "Retrieve cluster health status",
+      "command": "GET /_cluster/health",
+      "prompt": "Summarize the overall health of the cluster and note any red or yellow status.",
+      "output_format": "json"
+    },
+    {
+      "name": "nodes-stats",
+      "description": "Node-level CPU, memory, and storage statistics",
+      "command": "GET /_nodes/stats",
+      "prompt": "Highlight resource utilization outliers across nodes.",
+      "output_format": "json"
+    },
+    {
+      "name": "cluster-settings",
+      "description": "Dynamic cluster settings",
+      "command": "GET /_cluster/settings?include_defaults=true",
+      "prompt": "List non-default settings that may impact stability or security.",
+      "output_format": "json"
+    },
+    {
+      "name": "indices-overview",
+      "description": "Index listing with health and size",
+      "command": "GET /_cat/indices?format=json&bytes=b",
+      "prompt": "Identify large or unhealthy indices that require attention.",
+      "output_format": "json"
+    },
+    {
+      "name": "license",
+      "description": "License information",
+      "command": "GET /_license",
+      "prompt": "Describe license type and expiry risk.",
+      "output_format": "json"
+    }
+  ]
+}
