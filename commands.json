@@ -2,39 +2,312 @@
   "version": "1.0",
   "commands": [
     {
-      "name": "cluster-health",
-      "description": "Retrieve cluster health status",
+      "name": "active_tasks",
+      "description": "List currently running tasks with details",
+      "command": "GET /_tasks?detailed=true&actions=*",
+      "prompt": "Identify long-running or blocked tasks that could indicate cluster pressure.",
+      "output_format": "json"
+    },
+    {
+      "name": "api_keys_query",
+      "description": "Enumerate existing API keys for review",
+      "command": "GET /_security/api_key?owner=false",
+      "prompt": "List API keys, owners, and expiration to spot unused or risky credentials.",
+      "output_format": "json"
+    },
+    {
+      "name": "authenticated_user",
+      "description": "Show the authenticated user context",
+      "command": "GET /_security/_authenticate",
+      "prompt": "Verify the identity and roles of the authenticated principal used for the audit.",
+      "output_format": "json"
+    },
+    {
+      "name": "cluster_health",
+      "description": "Retrieve overall cluster health",
       "command": "GET /_cluster/health",
-      "prompt": "Summarize the overall health of the cluster and note any red or yellow status.",
+      "prompt": "Summarize cluster health and highlight red or yellow status causes.",
       "output_format": "json"
     },
     {
-      "name": "nodes-stats",
-      "description": "Node-level CPU, memory, and storage statistics",
-      "command": "GET /_nodes/stats",
-      "prompt": "Highlight resource utilization outliers across nodes.",
-      "output_format": "json"
-    },
-    {
-      "name": "cluster-settings",
-      "description": "Dynamic cluster settings",
+      "name": "cluster_settings_with_defaults",
+      "description": "Cluster settings including defaults",
       "command": "GET /_cluster/settings?include_defaults=true",
-      "prompt": "List non-default settings that may impact stability or security.",
+      "prompt": "Spot non-default cluster settings that affect performance, resilience, or security.",
       "output_format": "json"
     },
     {
-      "name": "indices-overview",
-      "description": "Index listing with health and size",
-      "command": "GET /_cat/indices?format=json&bytes=b",
-      "prompt": "Identify large or unhealthy indices that require attention.",
+      "name": "cluster_state",
+      "description": "Cluster state snapshot",
+      "command": "GET /_cluster/state",
+      "prompt": "Review metadata for indices, nodes, and routing to detect anomalies.",
+      "output_format": "json"
+    },
+    {
+      "name": "cluster_stats",
+      "description": "Cluster-wide statistics",
+      "command": "GET /_cluster/stats",
+      "prompt": "Capture global metrics (docs, storage, ingest) for sizing and trend analysis.",
+      "output_format": "json"
+    },
+    {
+      "name": "component_templates",
+      "description": "List component templates",
+      "command": "GET /_component_template",
+      "prompt": "Enumerate reusable template components that affect index defaults.",
+      "output_format": "json"
+    },
+    {
+      "name": "enrich_policies",
+      "description": "Configured enrich policies",
+      "command": "GET /_enrich/policy",
+      "prompt": "Review enrich policies to validate sources, schedules, and security.",
+      "output_format": "json"
+    },
+    {
+      "name": "ilm_policies",
+      "description": "Index Lifecycle Management policies",
+      "command": "GET /_ilm/policy",
+      "prompt": "List ILM policies and phases to ensure data retention aligns with requirements.",
+      "output_format": "json"
+    },
+    {
+      "name": "index_templates",
+      "description": "Composable index templates",
+      "command": "GET /_index_template",
+      "prompt": "Identify index templates and their priority/order for mappings and settings.",
+      "output_format": "json"
+    },
+    {
+      "name": "indices_mappings",
+      "description": "Mappings for all indices",
+      "command": "GET /_mapping",
+      "prompt": "Capture field mappings to detect risky field types or dynamic mapping usage.",
+      "output_format": "json"
+    },
+    {
+      "name": "indices_segments",
+      "description": "Segment details per shard",
+      "command": "GET /_segments",
+      "prompt": "Review segment counts and sizes to evaluate merge efficiency and search impact.",
+      "output_format": "json"
+    },
+    {
+      "name": "indices_settings",
+      "description": "Index settings across the cluster",
+      "command": "GET /_settings",
+      "prompt": "Inspect index-level settings such as replicas, refresh intervals, and slowlogs.",
+      "output_format": "json"
+    },
+    {
+      "name": "index_stats",
+      "description": "Index statistics overview",
+      "command": "GET /_stats",
+      "prompt": "Gather index statistics for documents, store size, and indexing/search counts.",
+      "output_format": "json"
+    },
+    {
+      "name": "ingest_pipelines",
+      "description": "Defined ingest pipelines",
+      "command": "GET /_ingest/pipeline",
+      "prompt": "List ingest pipelines to verify processors, failure handlers, and versioning.",
+      "output_format": "json"
+    },
+    {
+      "name": "legacy_index_templates",
+      "description": "Legacy index templates",
+      "command": "GET /_template",
+      "prompt": "Capture legacy templates to plan migration to composable templates and spot overrides.",
       "output_format": "json"
     },
     {
       "name": "license",
       "description": "License information",
       "command": "GET /_license",
-      "prompt": "Describe license type and expiry risk.",
+      "prompt": "Note license type, status, and expiry to anticipate feature availability.",
       "output_format": "json"
+    },
+    {
+      "name": "nodes_jvm_info",
+      "description": "JVM details for nodes",
+      "command": "GET /_nodes/jvm",
+      "prompt": "Summarize JVM versions and memory settings to ensure consistency across nodes.",
+      "output_format": "json"
+    },
+    {
+      "name": "nodes_plugins",
+      "description": "Installed plugins per node",
+      "command": "GET /_nodes/plugins",
+      "prompt": "List plugins and versions to detect unsupported or inconsistent installations.",
+      "output_format": "json"
+    },
+    {
+      "name": "nodes_settings",
+      "description": "Node settings",
+      "command": "GET /_nodes/settings",
+      "prompt": "Review node settings for discovery, networking, and resource controls.",
+      "output_format": "json"
+    },
+    {
+      "name": "nodes_settings_security_perf",
+      "description": "Node settings focused on security and performance",
+      "command": "GET /_nodes/settings?flat_settings=true&filter_path=**.security*,**.xpack.security*,**.performance*,**.indices.breaker*",
+      "prompt": "Highlight security/performance-related node settings such as TLS, authc realms, and circuit breakers.",
+      "output_format": "json"
+    },
+    {
+      "name": "search_stats",
+      "description": "Global search statistics",
+      "command": "GET /_stats/search",
+      "prompt": "Summarize search request volumes and latencies to spot hotspots.",
+      "output_format": "json"
+    },
+    {
+      "name": "search_stats_by_index",
+      "description": "Search statistics per index",
+      "command": "GET /_stats/search?level=indices",
+      "prompt": "Compare search load and latency across indices to find imbalances.",
+      "output_format": "json"
+    },
+    {
+      "name": "security_api_keys",
+      "description": "List security API keys",
+      "command": "GET /_security/api_key",
+      "prompt": "Capture API keys, creation, and expiration for audit and cleanup planning.",
+      "output_format": "json"
+    },
+    {
+      "name": "security_privileges",
+      "description": "Registered security privileges",
+      "command": "GET /_security/privilege",
+      "prompt": "List cluster/index/application privileges to understand available permissions.",
+      "output_format": "json"
+    },
+    {
+      "name": "security_role_mappings",
+      "description": "Role mappings",
+      "command": "GET /_security/role_mapping",
+      "prompt": "Review role mappings to verify external identities and role assignments.",
+      "output_format": "json"
+    },
+    {
+      "name": "security_roles",
+      "description": "Defined security roles",
+      "command": "GET /_security/role",
+      "prompt": "List roles and privileges to check least-privilege adherence.",
+      "output_format": "json"
+    },
+    {
+      "name": "security_users",
+      "description": "Configured security users",
+      "command": "GET /_security/user",
+      "prompt": "Enumerate users, roles, and metadata for lifecycle and access reviews.",
+      "output_format": "json"
+    },
+    {
+      "name": "security_users_roles_mappings",
+      "description": "User privileges overview",
+      "command": "GET /_security/user/_privileges",
+      "prompt": "Summarize the effective privileges granted to the authenticated user.",
+      "output_format": "json"
+    },
+    {
+      "name": "slm_policies",
+      "description": "Snapshot lifecycle management policies",
+      "command": "GET /_slm/policy",
+      "prompt": "Review SLM policies to ensure snapshot schedules and retention are adequate.",
+      "output_format": "json"
+    },
+    {
+      "name": "snapshot_repos",
+      "description": "Registered snapshot repositories",
+      "command": "GET /_snapshot",
+      "prompt": "List snapshot repositories and types to verify resilience and access.",
+      "output_format": "json"
+    },
+    {
+      "name": "snapshots_list",
+      "description": "List snapshots across repositories",
+      "command": "GET /_snapshot/_all",
+      "prompt": "Summarize snapshot counts and latest states to check backup freshness.",
+      "output_format": "json"
+    },
+    {
+      "name": "snapshot_stats",
+      "description": "Snapshot status and statistics",
+      "command": "GET /_snapshot/_all/_status",
+      "prompt": "Review ongoing or recent snapshot operations for duration and failures.",
+      "output_format": "json"
+    },
+    {
+      "name": "write_indexing_stats",
+      "description": "Indexing stats across nodes",
+      "command": "GET /_nodes/stats/indices/indexing",
+      "prompt": "Check indexing throughput and failure counts to detect ingest bottlenecks.",
+      "output_format": "json"
+    },
+    {
+      "name": "write_indexing_stats_by_node",
+      "description": "Indexing stats by node",
+      "command": "GET /_nodes/stats/indexing",
+      "prompt": "Compare indexing performance per node to find skew or stuck nodes.",
+      "output_format": "json"
+    },
+    {
+      "name": "write_merge_stats",
+      "description": "Segment merge statistics",
+      "command": "GET /_nodes/stats/indices/merge",
+      "prompt": "Evaluate merge activity and throttling that may affect write performance.",
+      "output_format": "json"
+    },
+    {
+      "name": "write_refresh_stats",
+      "description": "Refresh statistics",
+      "command": "GET /_nodes/stats/indices/refresh",
+      "prompt": "Review refresh frequency and latency to balance write throughput and search freshness.",
+      "output_format": "json"
+    },
+    {
+      "name": "xpack_info",
+      "description": "X-Pack feature info",
+      "command": "GET /_xpack",
+      "prompt": "Summarize available X-Pack features and license-dependent capabilities.",
+      "output_format": "json"
+    },
+    {
+      "name": "xpack_usage",
+      "description": "X-Pack feature usage statistics",
+      "command": "GET /_xpack/usage",
+      "prompt": "Review feature usage to align licensing with actual consumption.",
+      "output_format": "json"
+    },
+    {
+      "name": "shards_list",
+      "description": "List shards with allocation details",
+      "command": "GET /_cat/shards?v",
+      "prompt": "Identify unassigned or relocating shards and distribution across nodes.",
+      "output_format": "text"
+    },
+    {
+      "name": "nodes_infos",
+      "description": "Node information overview",
+      "command": "GET /_cat/nodes?v",
+      "prompt": "List nodes with roles and resource stats for quick topology insight.",
+      "output_format": "text"
+    },
+    {
+      "name": "nodes_hot_threads",
+      "description": "Node hot threads",
+      "command": "GET /_nodes/hot_threads",
+      "prompt": "Capture hot thread stacks to diagnose CPU-intensive operations.",
+      "output_format": "text"
+    },
+    {
+      "name": "indices_list",
+      "description": "List indices with health and size",
+      "command": "GET /_cat/indices?v",
+      "prompt": "Provide a concise view of index health, status, and sizes.",
+      "output_format": "text"
     }
   ]
 }
