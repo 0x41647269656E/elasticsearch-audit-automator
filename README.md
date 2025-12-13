@@ -80,6 +80,78 @@ python main.py \
 
 Chaque audit crée un dossier `data/YYYY-MM-DD_HH-mm-ss-<client>-<cluster>` contenant les réponses aux commandes, `audit_infos.json` et éventuellement `errors.log`.
 
+## Provisionner des clusters de test (Docker Compose)
+### Prérequis
+- Docker et Docker Compose
+- Environ 8 Go de RAM libre (3 nœuds Elasticsearch + service de chargement de données)
+
+### Cluster Elasticsearch 7.17 (HTTP, basic auth)
+Un jeu de conteneurs Docker permet de démarrer trois nœuds 7.17.22 avec sécurité activée et un utilisateur `audit-elasticsearch`/`audit-me` créé automatiquement par le service `data-loader` après vérification que le cluster est `green`.
+
+Commandes :
+```bash
+docker compose -f test/7.17/docker-compose.yml up -d
+# Surveillez les logs si besoin
+docker compose -f test/7.17/docker-compose.yml logs -f data-loader
+```
+
+Paramètres clés :
+- Accès HTTP : `http://localhost:9200`
+- Superuser initial : `elastic` / `changeme`
+- Utilisateur d’audit : `audit-elasticsearch` / `audit-me`
+- Indices générés automatiquement : `audit-demo-7-01` à `audit-demo-7-10`
+- Jeux de données (~500 Mo) tirés des dumps publics GitHub Archive (`DATASET_URLS` dans le compose)
+
+### Cluster Elasticsearch 8.x (HTTPS avec certificats)
+La pile 8.12.2 démarre avec TLS activé. Un conteneur `certgen` génère une AC et un certificat serveur partagés placés dans `test/certs` (déjà pré-générés dans le dépôt et régénérables via `test/8/generate-certs.sh`).
+
+Commandes :
+```bash
+# Facultatif : régénérer les certificats
+CERTS_DIR=$(pwd)/test/certs sh test/8/generate-certs.sh
+
+docker compose -f test/8/docker-compose.yml up -d
+docker compose -f test/8/docker-compose.yml logs -f data-loader
+```
+
+Paramètres clés :
+- Accès HTTPS : `https://localhost:9300`
+- AC et certificats : `test/certs/ca.crt`, `test/certs/tls.crt`, `test/certs/tls.key`
+- Superuser initial : `elastic` / `changeme`
+- Utilisateur d’audit : `audit-elasticsearch` / `audit-me`
+- Indices générés automatiquement : `audit-demo-8-01` à `audit-demo-8-10`
+
+Le service `data-loader` vérifie la santé du cluster, attend l’état `green`, crée l’utilisateur cible si besoin, provisionne 10 indices et charge plusieurs fichiers JSON publics (~500 Mo) en bulk.
+
+### Utiliser `main.py` contre les clusters de test
+#### Mode HTTP (cluster 7.17)
+```bash
+python main.py \
+  --host localhost \
+  --port 9200 \
+  --scheme http \
+  --username audit-elasticsearch \
+  --password audit-me \
+  --client-name local-lab \
+  --cluster-name audit-es7
+```
+
+#### Mode HTTPS (cluster 8.x)
+```bash
+python main.py \
+  --host localhost \
+  --port 9300 \
+  --scheme https \
+  --username audit-elasticsearch \
+  --password audit-me \
+  --verify-tls true \
+  --ca-cert test/certs/ca.crt \
+  --client-name local-lab \
+  --cluster-name audit-es8
+```
+
+Adaptez les chemins/ports si vous exécutez Docker sur une machine distante. Les paramètres `.env` peuvent également refléter ces valeurs (les arguments CLI prennent le pas sur le fichier).
+
 ## Ajouter de nouvelles commandes
 1. Éditez `commands.json` et ajoutez une entrée dans `commands` en respectant le schéma.
 2. Fixez `output_format` à `json` (réponse parsée et indentée) ou `text`.
