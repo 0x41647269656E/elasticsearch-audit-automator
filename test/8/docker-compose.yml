@@ -1,0 +1,157 @@
+version: "3.8"
+
+x-elasticsearch-environment: &es-env
+  node.store.allow_mmap: "false"
+  cluster.name: audit-es8
+  discovery.seed_hosts: es01,es02,es03
+  cluster.initial_master_nodes: es01,es02,es03
+  network.host: 0.0.0.0
+  bootstrap.memory_lock: "true"
+  xpack.security.enabled: "true"
+  xpack.security.http.ssl.enabled: "true"
+  xpack.security.http.ssl.key: /usr/share/elasticsearch/config/certs/tls.key
+  xpack.security.http.ssl.certificate: /usr/share/elasticsearch/config/certs/tls.crt
+  xpack.security.http.ssl.certificate_authorities: /usr/share/elasticsearch/config/certs/ca.crt
+  xpack.security.transport.ssl.enabled: "true"
+  xpack.security.transport.ssl.verification_mode: certificate
+  xpack.security.transport.ssl.certificate_authorities: /usr/share/elasticsearch/config/certs/ca.crt
+  xpack.security.transport.ssl.certificate: /usr/share/elasticsearch/config/certs/tls.crt
+  xpack.security.transport.ssl.key: /usr/share/elasticsearch/config/certs/tls.key
+  ELASTIC_PASSWORD: changeme
+  ES_JAVA_OPTS: -Xms1g -Xmx1g
+
+x-elasticsearch-common: &es-common
+  image: docker.elastic.co/elasticsearch/elasticsearch:8.12.2
+  environment: *es-env
+  ulimits:
+    memlock:
+      soft: -1
+      hard: -1
+  volumes:
+    - ../certs:/usr/share/elasticsearch/config/certs:rw
+  healthcheck:
+    test: ["CMD", "curl", "-s", "-k", "https://localhost:9200/_cluster/health"]
+    interval: 10s
+    timeout: 10s
+    retries: 50
+    start_period: 20s
+
+services:
+  certgen:
+    image: alpine:3.19
+    container_name: es8-certgen
+    entrypoint: /bin/sh
+    command: -c "apk add --no-cache openssl && /scripts/generate-certs.sh"
+    volumes:
+      - ../certs:/certs
+      - ./generate-certs.sh:/scripts/generate-certs.sh:ro
+
+  es01:
+    <<: *es-common
+    container_name: es8-es01
+    mem_limit: 1g
+    depends_on:
+      certgen:
+        condition: service_completed_successfully
+    ports:
+      - "9300:9200"
+    environment:
+      <<: *es-env
+      node.name: es01
+      http.port: 9200
+      transport.port: 9300
+    volumes:
+      - es8-es01-data:/usr/share/elasticsearch/data
+      - ../certs:/usr/share/elasticsearch/config/certs:ro
+
+  es02:
+    <<: *es-common
+    container_name: es8-es02
+    mem_limit: 1g
+    depends_on:
+      certgen:
+        condition: service_completed_successfully
+    ports:
+      - "9301:9200"
+    environment:
+      <<: *es-env
+      node.name: es02
+      http.port: 9200
+      transport.port: 9300
+    volumes:
+      - es8-es02-data:/usr/share/elasticsearch/data
+      - ../certs:/usr/share/elasticsearch/config/certs:ro
+
+  es03:
+    <<: *es-common
+    container_name: es8-es03
+    mem_limit: 1g
+    depends_on:
+      certgen:
+        condition: service_completed_successfully
+    ports:
+      - "9302:9200"
+    environment:
+      <<: *es-env
+      node.name: es03
+      http.port: 9200
+      transport.port: 9300
+    volumes:
+      - es8-es03-data:/usr/share/elasticsearch/data
+      - ../certs:/usr/share/elasticsearch/config/certs:ro
+
+  data-loader:
+    build:
+      context: ../scripts
+    depends_on:
+      es01:
+        condition: service_healthy
+      es02:
+        condition: service_healthy
+      es03:
+        condition: service_healthy
+    environment:
+      ELASTIC_HOST: https://es01:9200
+      ELASTIC_USERNAME: elastic
+      ELASTIC_PASSWORD: changeme
+      TARGET_USERNAME: audit-elasticsearch
+      TARGET_PASSWORD: audit-me
+      INDEX_COUNT: 10
+      TARGET_INDEX_PREFIX: audit-demo-8
+      DATASET_URLS: https://data.gharchive.org/2024-01-01-0.json.gz,https://data.gharchive.org/2024-01-01-1.json.gz,https://data.gharchive.org/2024-01-01-2.json.gz,https://data.gharchive.org/2024-01-01-3.json.gz
+      VERIFY_CERTS: "true"
+      CA_CERT_PATH: /certs/ca.crt
+      ELASTIC_CLIENT_APIVERSIONING: "true"
+    volumes:
+      - ../certs:/certs:ro
+    command: ["python", "load_data.py"]
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.12.2
+    container_name: kibana8
+    mem_limit: 512m
+    environment:
+      ELASTICSEARCH_HOSTS: https://es01:9200
+      ELASTICSEARCH_USERNAME: elastic
+      ELASTICSEARCH_PASSWORD: changeme
+      ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES: /certs/ca.crt
+      SERVER_NAME: kibana8
+      SERVER_HOST: 0.0.0.0
+      SERVER_SSL_ENABLED: "false"
+      XPACK_SECURITY_ENABLED: "true"
+    ports:
+      - "5602:5601"
+    depends_on:
+      es01:
+        condition: service_healthy
+      es02:
+        condition: service_healthy
+      es03:
+        condition: service_healthy
+    volumes:
+      - ../certs:/certs:ro
+
+volumes:
+  es8-es01-data:
+  es8-es02-data:
+  es8-es03-data:
