@@ -49,6 +49,7 @@ services:
   es01:
     <<: *es-common
     container_name: es8-es01
+    mem_limit: 1g
     depends_on:
       certgen:
         condition: service_completed_successfully
@@ -66,6 +67,7 @@ services:
   es02:
     <<: *es-common
     container_name: es8-es02
+    mem_limit: 1g
     depends_on:
       certgen:
         condition: service_completed_successfully
@@ -83,6 +85,7 @@ services:
   es03:
     <<: *es-common
     container_name: es8-es03
+    mem_limit: 1g
     depends_on:
       certgen:
         condition: service_completed_successfully
@@ -122,6 +125,31 @@ services:
     volumes:
       - ../certs:/certs:ro
     command: ["python", "load_data.py"]
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.12.2
+    container_name: kibana8
+    mem_limit: 512m
+    environment:
+      ELASTICSEARCH_HOSTS: https://es01:9200
+      ELASTICSEARCH_USERNAME: elastic
+      ELASTICSEARCH_PASSWORD: changeme
+      ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES: /certs/ca.crt
+      SERVER_NAME: kibana8
+      SERVER_HOST: 0.0.0.0
+      SERVER_SSL_ENABLED: "false"
+      XPACK_SECURITY_ENABLED: "true"
+    ports:
+      - "5602:5601"
+    depends_on:
+      es01:
+        condition: service_healthy
+      es02:
+        condition: service_healthy
+      es03:
+        condition: service_healthy
+    volumes:
+      - ../certs:/certs:ro
 
 volumes:
   es8-es01-data:

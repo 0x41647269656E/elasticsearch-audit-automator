@@ -31,6 +31,7 @@ services:
   es01:
     <<: *es-common
     container_name: es01
+    mem_limit: 1g
     ports:
       - "9200:9200"
     environment:
@@ -44,6 +45,7 @@ services:
   es02:
     <<: *es-common
     container_name: es02
+    mem_limit: 1g
     ports:
       - "9201:9200"
     environment:
@@ -57,6 +59,7 @@ services:
   es03:
     <<: *es-common
     container_name: es03
+    mem_limit: 1g
     ports:
       - "9202:9200"
     environment:
@@ -89,6 +92,26 @@ services:
       VERIFY_CERTS: "false"
       ELASTIC_CLIENT_APIVERSIONING: "true"
     command: ["python", "load_data.py"]
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.17.22
+    container_name: kibana7
+    mem_limit: 512m
+    environment:
+      ELASTICSEARCH_HOSTS: http://es01:9200
+      ELASTICSEARCH_USERNAME: elastic
+      ELASTICSEARCH_PASSWORD: changeme
+      SERVER_NAME: kibana7
+      SERVER_HOST: 0.0.0.0
+    ports:
+      - "5601:5601"
+    depends_on:
+      es01:
+        condition: service_healthy
+      es02:
+        condition: service_healthy
+      es03:
+        condition: service_healthy
 
 volumes:
   es7-es01-data:

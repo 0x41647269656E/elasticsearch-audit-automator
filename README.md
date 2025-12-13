@@ -83,10 +83,12 @@ Chaque audit crée un dossier `data/YYYY-MM-DD_HH-mm-ss-<client>-<cluster>` cont
 ## Provisionner des clusters de test (Docker Compose)
 ### Prérequis
 - Docker et Docker Compose
-- Environ 8 Go de RAM libre (3 nœuds Elasticsearch + service de chargement de données)
+- Environ 8 Go de RAM libre (3 nœuds Elasticsearch + service de chargement de données + Kibana)
 
 ### Cluster Elasticsearch 7.17 (HTTP, basic auth)
 Un jeu de conteneurs Docker permet de démarrer trois nœuds 7.17.22 avec sécurité activée et un utilisateur `audit-elasticsearch`/`audit-me` créé automatiquement par le service `data-loader` après vérification que le cluster est `green`.
+
+Chaque nœud Elasticsearch est limité à 1 Go de heap (`ES_JAVA_OPTS`) et à 1 Go de mémoire conteneur, et Kibana est limité à 512 Mo.
 
 Commandes :
 ```bash
@@ -101,9 +103,12 @@ Paramètres clés :
 - Utilisateur d’audit : `audit-elasticsearch` / `audit-me`
 - Indices générés automatiquement : `audit-demo-7-01` à `audit-demo-7-10`
 - Jeux de données (~500 Mo) tirés des dumps publics GitHub Archive (`DATASET_URLS` dans le compose)
+- Kibana : http://localhost:5601 (authentification `elastic`/`changeme` ou `audit-elasticsearch`/`audit-me`)
 
 ### Cluster Elasticsearch 8.x (HTTPS avec certificats)
 La pile 8.12.2 démarre avec TLS activé. Un conteneur `certgen` génère une AC et un certificat serveur partagés placés dans `test/certs` (déjà pré-générés dans le dépôt et régénérables via `test/8/generate-certs.sh`).
+
+Chaque nœud Elasticsearch est limité à 1 Go de heap et 1 Go de mémoire conteneur, Kibana est limité à 512 Mo.
 
 Commandes :
 ```bash
@@ -120,6 +125,7 @@ Paramètres clés :
 - Superuser initial : `elastic` / `changeme`
 - Utilisateur d’audit : `audit-elasticsearch` / `audit-me`
 - Indices générés automatiquement : `audit-demo-8-01` à `audit-demo-8-10`
+- Kibana : https://localhost:5602 (certificat AC `test/certs/ca.crt`, authentification `elastic`/`changeme` ou `audit-elasticsearch`/`audit-me`)
 
 Le service `data-loader` vérifie la santé du cluster, attend l’état `green`, crée l’utilisateur cible si besoin, provisionne 10 indices et charge plusieurs fichiers JSON publics (~500 Mo) en bulk.
 
