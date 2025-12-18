@@ -7,14 +7,10 @@ x-elasticsearch-environment: &es-env
   bootstrap.memory_lock: "true"
   xpack.security.enabled: "true"
   xpack.security.http.ssl.enabled: "true"
-  xpack.security.http.ssl.key: /usr/share/elasticsearch/config/certs/certs/es01.key
-  xpack.security.http.ssl.certificate: /usr/share/elasticsearch/config/certs/certs/es01.crt
   xpack.security.http.ssl.certificate_authorities: /usr/share/elasticsearch/config/certs/ca/ca.crt
   xpack.security.transport.ssl.enabled: "true"
   xpack.security.transport.ssl.verification_mode: certificate
   xpack.security.transport.ssl.certificate_authorities: /usr/share/elasticsearch/config/certs/ca/ca.crt
-  xpack.security.transport.ssl.certificate: /usr/share/elasticsearch/config/certs/certs/es01.crt
-  xpack.security.transport.ssl.key: /usr/share/elasticsearch/config/certs/certs/es01.key
   ELASTIC_PASSWORD: changeme
   ES_JAVA_OPTS: -Xms512m -Xmx512m
 
@@ -41,22 +37,29 @@ services:
     user: "0"
     volumes:
       - certs:/usr/share/elasticsearch/config/certs
+      - ./instances.yml:/usr/share/elasticsearch/config/instances.yml:ro
     command: >
-      bash -c '
+      bash -c "
+        set -e
+
+        mkdir -p config/certs/ca config/certs/certs
+
         if [ ! -f config/certs/ca/ca.crt ]; then
-          echo ">> Generating CA";
-          bin/elasticsearch-certutil ca --silent --pem -out config/certs/ca.zip;
-          unzip config/certs/ca.zip -d config/certs;
-          echo ">> Generating node certs";
-          bin/elasticsearch-certutil cert --silent --pem
-            --ca-cert config/certs/ca/ca.crt
-            --ca-key config/certs/ca/ca.key
-            --out config/certs/certs.zip
-            --dns es01,es02,es03,localhost;
-          unzip config/certs/certs.zip -d config/certs;
-        fi;
-        chown -R 1000:0 config/certs
-      '
+          echo 'Generating CA'
+          rm -f config/certs/ca.zip
+          yes | bin/elasticsearch-certutil ca --silent --pem -out config/certs/ca.zip
+          unzip -o config/certs/ca.zip -d config/certs
+        fi
+
+        if [ ! -f config/certs/es01/es01.crt ]; then
+          echo 'Generating node certificates from instances.yml'
+          rm -f config/certs/certs.zip
+          yes | bin/elasticsearch-certutil cert --silent --pem --in config/instances.yml --ca-cert config/certs/ca/ca.crt --ca-key config/certs/ca/ca.key -out config/certs/certs.zip
+          unzip -o config/certs/certs.zip -d config/certs
+        fi
+
+        chown -R 1000:1000 config/certs && echo 'Certificates ready'
+      "
 
   es01:
     <<: *es-common
@@ -72,10 +75,10 @@ services:
       node.name: es01
       http.port: 9200
       transport.port: 9300
-      xpack.security.http.ssl.certificate: /usr/share/elasticsearch/config/certs/certs/es01.crt
-      xpack.security.http.ssl.key: /usr/share/elasticsearch/config/certs/certs/es01.key
-      xpack.security.transport.ssl.certificate: /usr/share/elasticsearch/config/certs/certs/es01.crt
-      xpack.security.transport.ssl.key: /usr/share/elasticsearch/config/certs/certs/es01.key
+      xpack.security.http.ssl.certificate: /usr/share/elasticsearch/config/certs/es01/es01.crt
+      xpack.security.http.ssl.key: /usr/share/elasticsearch/config/certs/es01/es01.key
+      xpack.security.transport.ssl.certificate: /usr/share/elasticsearch/config/certs/es01/es01.crt
+      xpack.security.transport.ssl.key: /usr/share/elasticsearch/config/certs/es01/es01.key
     volumes:
       - es8-es01-data:/usr/share/elasticsearch/data
       - certs:/usr/share/elasticsearch/config/certs
@@ -94,10 +97,10 @@ services:
       node.name: es02
       http.port: 9200
       transport.port: 9300
-      xpack.security.http.ssl.certificate: /usr/share/elasticsearch/config/certs/certs/es02.crt
-      xpack.security.http.ssl.key: /usr/share/elasticsearch/config/certs/certs/es02.key
-      xpack.security.transport.ssl.certificate: /usr/share/elasticsearch/config/certs/certs/es02.crt
-      xpack.security.transport.ssl.key: /usr/share/elasticsearch/config/certs/certs/es02.key
+      xpack.security.http.ssl.certificate: /usr/share/elasticsearch/config/certs/es02/es02.crt
+      xpack.security.http.ssl.key: /usr/share/elasticsearch/config/certs/es02/es02.key
+      xpack.security.transport.ssl.certificate: /usr/share/elasticsearch/config/certs/es02/es02.crt
+      xpack.security.transport.ssl.key: /usr/share/elasticsearch/config/certs/es02/es02.key
     volumes:
       - es8-es02-data:/usr/share/elasticsearch/data
       - certs:/usr/share/elasticsearch/config/certs
@@ -116,10 +119,10 @@ services:
       node.name: es03
       http.port: 9200
       transport.port: 9300
-      xpack.security.http.ssl.certificate: /usr/share/elasticsearch/config/certs/certs/es03.crt
-      xpack.security.http.ssl.key: /usr/share/elasticsearch/config/certs/certs/es03.key
-      xpack.security.transport.ssl.certificate: /usr/share/elasticsearch/config/certs/certs/es03.crt
-      xpack.security.transport.ssl.key: /usr/share/elasticsearch/config/certs/certs/es03.key
+      xpack.security.http.ssl.certificate: /usr/share/elasticsearch/config/certs/es03/es03.crt
+      xpack.security.http.ssl.key: /usr/share/elasticsearch/config/certs/es03/es03.key
+      xpack.security.transport.ssl.certificate: /usr/share/elasticsearch/config/certs/es03/es03.crt
+      xpack.security.transport.ssl.key: /usr/share/elasticsearch/config/certs/es03/es03.key
     volumes:
       - es8-es03-data:/usr/share/elasticsearch/data
       - certs:/usr/share/elasticsearch/config/certs

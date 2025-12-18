@@ -123,11 +123,11 @@ docker compose -f test/8/docker-compose.yml logs -f data-loader
 
 Paramètres clés :
 - Accès HTTPS : `https://localhost:9300`
-- AC et certificats : `test/certs/ca.crt`, `test/certs/tls.crt`, `test/certs/tls.key`
+- AC et certificats : générés via le conteneur `setup` avec `elasticsearch-certutil` et `test/8/instances.yml`, stockés dans le volume `certs` (`/usr/share/elasticsearch/config/certs/...`, AC consommable dans les conteneurs auxiliaires via `/certs/ca/ca.crt`)
 - Superuser initial : `elastic` / `changeme`
 - Utilisateur d’audit : `audit-elasticsearch` / `audit-me`
 - Indices générés automatiquement : `audit-demo-8-01` à `audit-demo-8-10`
-- Kibana : https://localhost:5602 (certificat AC `test/certs/ca.crt`, authentification `elastic`/`changeme` ou `audit-elasticsearch`/`audit-me`)
+- Kibana : https://localhost:5602 (certificat AC disponible dans le volume `certs`, par exemple `/certs/ca/ca.crt`, authentification `elastic`/`changeme` ou `audit-elasticsearch`/`audit-me`)
 
 Le service `data-loader` vérifie la santé du cluster, attend l’état `green`, crée l’utilisateur cible si besoin, provisionne 10 indices et charge les documents factices embarqués (`dummy_data.json`).
 
@@ -142,11 +142,11 @@ docker compose -f test/9/docker-compose.yml logs -f data-loader
 
 Paramètres clés :
 - Accès HTTPS : `https://localhost:9400`
-- AC et certificats : `test/certs/ca.crt`, `test/certs/tls.crt`, `test/certs/tls.key`
+- AC et certificats : générés via le conteneur `setup` avec `elasticsearch-certutil` et `test/9/instances.yml`, stockés dans le volume `certs` (`/usr/share/elasticsearch/config/certs/...`, AC consommable dans les conteneurs auxiliaires via `/certs/ca/ca.crt`)
 - Superuser initial : `elastic` / `changeme`
 - Utilisateur d’audit : `audit-elasticsearch` / `audit-me`
 - Indices générés automatiquement : `audit-demo-9-01` à `audit-demo-9-10`
-- Kibana : https://localhost:5603 (certificat AC `test/certs/ca.crt`, authentification `elastic`/`changeme` ou `audit-elasticsearch`/`audit-me`)
+- Kibana : https://localhost:5603 (certificat AC disponible dans le volume `certs`, par exemple `/certs/ca/ca.crt`, authentification `elastic`/`changeme` ou `audit-elasticsearch`/`audit-me`)
 
 Le service `data-loader` vérifie la santé du cluster, attend l’état `green`, crée l’utilisateur cible si besoin, provisionne 10 indices et charge les documents du fichier local embarqué (`dummy_data.json`).
 
