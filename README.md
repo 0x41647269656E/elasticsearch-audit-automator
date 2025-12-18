@@ -91,6 +91,7 @@ Chaque audit crée un dossier `data/YYYY-MM-DD_HH-mm-ss-<client>-<cluster>` cont
 Un jeu de conteneurs Docker permet de démarrer trois nœuds 7.17.22 avec sécurité activée et un utilisateur `audit-elasticsearch`/`audit-me` créé automatiquement par le service `data-loader` après vérification que le cluster est `green`.
 
 Chaque nœud Elasticsearch est limité à 512 Mo de heap (`ES_JAVA_OPTS`) et à 1 Go de mémoire conteneur, et Kibana est limité à 512 Mo.
+Le transport inter-nœuds est chiffré (certificats partagés dans `test/certs`) pour respecter les exigences de sécurité Elasticsearch.
 
 Commandes :
 ```bash
