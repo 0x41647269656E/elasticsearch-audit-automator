@@ -120,6 +120,8 @@ services:
       VERIFY_CERTS: "true"
       CA_CERT_PATH: /certs/ca.crt
       ELASTIC_CLIENT_APIVERSIONING: "true"
+      BULK_CHUNK_SIZE: 500
+      BULK_REQUEST_TIMEOUT: 120
     volumes:
       - ../certs:/certs:ro
     command: ["python", "load_data.py"]

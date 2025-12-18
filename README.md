@@ -85,6 +85,7 @@ Chaque audit crée un dossier `data/YYYY-MM-DD_HH-mm-ss-<client>-<cluster>` cont
 - Docker et Docker Compose
 - Environ 8 Go de RAM libre (3 nœuds Elasticsearch + service de chargement de données + Kibana)
 - Si votre environnement est plus contraint et que vous voyez des arrêts de conteneur avec `137` (OOM), réduisez encore le heap via la variable `ES_JAVA_OPTS` dans les fichiers `docker-compose.yml`.
+- Si le service `data-loader` atteint un timeout réseau, baissez la taille des lots (`BULK_CHUNK_SIZE`) ou augmentez le timeout (`BULK_REQUEST_TIMEOUT`) dans les variables d’environnement du service.
 
 ### Cluster Elasticsearch 7.17 (HTTP, basic auth)
 Un jeu de conteneurs Docker permet de démarrer trois nœuds 7.17.22 avec sécurité activée et un utilisateur `audit-elasticsearch`/`audit-me` créé automatiquement par le service `data-loader` après vérification que le cluster est `green`.

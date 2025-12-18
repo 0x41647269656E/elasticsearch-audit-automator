@@ -100,9 +100,24 @@ def generate_actions(urls: List[str], indices: List[str]) -> Iterable[dict]:
             }
 
 
-def bulk_ingest(client: Elasticsearch, urls: List[str], indices: List[str], batch_size: int = 2000) -> None:
+def bulk_ingest(
+    client: Elasticsearch,
+    urls: List[str],
+    indices: List[str],
+    batch_size: int = 500,
+    request_timeout: int = 120,
+) -> None:
     total = 0
-    for ok, result in helpers.streaming_bulk(client, generate_actions(urls, indices), chunk_size=batch_size):
+    for ok, result in helpers.streaming_bulk(
+        client,
+        generate_actions(urls, indices),
+        chunk_size=batch_size,
+        request_timeout=request_timeout,
+        max_retries=5,
+        initial_backoff=2,
+        max_backoff=30,
+        raise_on_error=False,
+    ):
         total += 1
         if not ok:
             logger.warning("Bulk item error: %s", result)
@@ -121,6 +136,8 @@ def main() -> None:
     index_count = int(os.getenv("INDEX_COUNT", "10"))
     verify_certs = os.getenv("VERIFY_CERTS", "false").lower() == "true"
     ca_cert = os.getenv("CA_CERT_PATH")
+    bulk_chunk_size = int(os.getenv("BULK_CHUNK_SIZE", "500"))
+    bulk_request_timeout = int(os.getenv("BULK_REQUEST_TIMEOUT", "120"))
 
     dataset_urls = env_list(
         "DATASET_URLS",
@@ -134,7 +151,7 @@ def main() -> None:
 
     user_client = build_client(host, target_username, target_password, verify_certs, ca_cert)
     indices = create_indices(user_client, index_prefix, index_count)
-    bulk_ingest(user_client, dataset_urls, indices)
+    bulk_ingest(user_client, dataset_urls, indices, batch_size=bulk_chunk_size, request_timeout=bulk_request_timeout)
 
     logger.info("Data load complete for indices: %s", ", ".join(indices))
 
