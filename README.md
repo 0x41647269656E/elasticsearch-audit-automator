@@ -89,8 +89,8 @@ Chaque audit crée un dossier `data/YYYY-MM-DD_HH-mm-ss-<client>-<cluster>` cont
 - Le `data-loader` utilise désormais un fichier JSON local (`test/scripts/dummy_data.json`) copié dans son image pour éviter les téléchargements réseau pendant l’ingestion.
 - Trois workers légers `worker1/2/3` génèrent des recherches et des écritures synthétiques basées sur `dummy_data.json` pour stimuler le cluster après le chargement initial.
 
-### Cluster Elasticsearch 7.17 (HTTP, authentification basique)
-Un jeu de conteneurs Docker permet de démarrer trois nœuds 7.17.22 sans TLS. L’authentification Elasticsearch est active mais le transport n’est pas chiffré.
+### Cluster Elasticsearch 7.17 (HTTP, auth basique, transport chiffré)
+Un jeu de conteneurs Docker permet de démarrer trois nœuds 7.17.29 sans TLS côté HTTP mais avec sécurité activée. Le transport inter-nœuds est chiffré via les certificats partagés dans `test/certs`, ce qui satisfait les bootstrap checks tout en conservant des appels HTTP simples pour les clients.
 
 Chaque nœud Elasticsearch est limité à 512 Mo de heap (`ES_JAVA_OPTS`) et à 1 Go de mémoire conteneur, et Kibana est limité à 512 Mo.
 
