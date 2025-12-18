@@ -7,6 +7,8 @@ import socket
 import socketserver
 import subprocess
 import threading
+import ssl
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -268,6 +270,68 @@ def run_commands(
     return {"executed": executed, "failed": failed}
 
 
+def decode_certificate(der_bytes: bytes) -> Dict[str, Any]:
+    """Decode DER certificate bytes into a JSON-serializable dictionary."""
+    pem = ssl.DER_cert_to_PEM_cert(der_bytes)
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as tmp:
+        tmp.write(pem)
+        tmp_path = tmp.name
+    try:
+        decoded = ssl._ssl._test_decode_cert(tmp_path)  # type: ignore[attr-defined]
+    finally:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+    san = decoded.get("subjectAltName", [])
+    return {
+        "subject": decoded.get("subject"),
+        "issuer": decoded.get("issuer"),
+        "not_before": decoded.get("notBefore"),
+        "not_after": decoded.get("notAfter"),
+        "subject_alt_names": san,
+    }
+
+
+def fetch_tls_chain(host: str, port: int, server_hostname: str, verify: bool) -> Dict[str, Any]:
+    """Retrieve TLS chain information from a remote HTTPS endpoint."""
+    ctx = ssl.create_default_context()
+    if not verify:
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+
+    try:
+        with socket.create_connection((host, port), timeout=10) as sock:
+            with ctx.wrap_socket(sock, server_hostname=server_hostname) as ssock:
+                chain_ders: List[bytes]
+                if hasattr(ssock, "getpeercertchain"):
+                    chain_ders = ssock.getpeercertchain()  # type: ignore[attr-defined]
+                else:
+                    leaf = ssock.getpeercert(True)
+                    chain_ders = [leaf] if leaf else []
+    except Exception as exc:
+        return {"status": "error", "error": str(exc), "chain": []}
+
+    decoded_chain = [decode_certificate(cert) for cert in chain_ders]
+    return {"status": "ok", "chain": decoded_chain}
+
+
+def persist_tls_report(
+    audit_dir: Path,
+    config: Dict[str, Any],
+    local_port: Optional[int] = None,
+) -> Optional[str]:
+    if config.get("scheme") != "https":
+        return None
+    connect_host = "127.0.0.1" if local_port else config["host"]
+    connect_port = local_port or config["port"]
+    tls_info = fetch_tls_chain(connect_host, connect_port, server_hostname=config["host"], verify=config["verify_tls"])
+    report_path = audit_dir / "tls_report.json"
+    with open(report_path, "w", encoding="utf-8") as file:
+        json.dump(tls_info, file, indent=2)
+    return str(report_path)
+
+
 def collect_cluster_details(session: requests.Session, base_url: str, verify_tls: bool) -> Dict[str, Any]:
     details: Dict[str, Any] = {}
     try:
@@ -322,6 +386,7 @@ def write_audit_info(
     commands_meta: Dict[str, Any],
     command_results: Dict[str, List[str]],
     node_details: Dict[str, Any],
+    tls_report: Optional[str] = None,
 ) -> None:
     audit_info = {
         "connection_method": connection_method,
@@ -334,6 +399,8 @@ def write_audit_info(
         "nodes_os": node_details.get("nodes_os", {}),
         "nodes_resources": node_details.get("nodes_stats", {}),
     }
+    if tls_report:
+        audit_info["tls_report"] = tls_report
     with open(audit_dir / "audit_infos.json", "w", encoding="utf-8") as file:
         json.dump(audit_info, file, indent=2)
 
@@ -378,6 +445,7 @@ def main() -> None:
             node_details = collect_cluster_details(session, local_base_url, config["verify_tls"])
             cluster_name = config.get("cluster_name") or node_details.get("cluster_name") or config["host"]
             audit_dir = create_audit_dir(data_dir, config["client_name"], cluster_name, config["host"])
+            tls_report = persist_tls_report(audit_dir, config, local_port=tunnel.local_port)
             results = run_commands(
                 session,
                 local_base_url,
@@ -393,12 +461,14 @@ def main() -> None:
                 commands_meta,
                 results,
                 node_details,
+                tls_report,
             )
             prompt_analysis(audit_dir)
     else:
         node_details = collect_cluster_details(session, base_url, config["verify_tls"])
         cluster_name = config.get("cluster_name") or node_details.get("cluster_name") or config["host"]
         audit_dir = create_audit_dir(data_dir, config["client_name"], cluster_name, config["host"])
+        tls_report = persist_tls_report(audit_dir, config)
         results = run_commands(
             session,
             base_url,
@@ -414,6 +484,7 @@ def main() -> None:
             commands_meta,
             results,
             node_details,
+            tls_report,
         )
         prompt_analysis(audit_dir)
 

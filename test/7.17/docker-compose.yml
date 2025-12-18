@@ -12,7 +12,7 @@ x-elasticsearch-environment: &es-env
   ES_JAVA_OPTS: -Xms512m -Xmx512m
 
 x-elasticsearch-common: &es-common
-  image: docker.elastic.co/elasticsearch/elasticsearch:7.17.22
+  image: docker.elastic.co/elasticsearch/elasticsearch:7.17.29
   environment: *es-env
   ulimits:
     memlock:
@@ -22,7 +22,7 @@ x-elasticsearch-common: &es-common
     test: ["CMD", "curl", "-s", "http://localhost:9200/_cluster/health"]
     interval: 10s
     timeout: 10s
-    retries: 50
+    retries: 10
     start_period: 20s
 
 services:
@@ -95,7 +95,7 @@ services:
     command: ["python", "load_data.py"]
 
   kibana:
-    image: docker.elastic.co/kibana/kibana:7.17.22
+    image: docker.elastic.co/kibana/kibana:7.17.29
     container_name: kibana7
     mem_limit: 512m
     environment:
