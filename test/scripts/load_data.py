@@ -124,6 +124,11 @@ def bulk_ingest(
     batch_size: int = 500,
     request_timeout: int = 120,
 ) -> None:
+    if not documents:
+        logger.warning("No documents found to ingest")
+        return
+
+    bulk_client = client.options(request_timeout=request_timeout)
     total = 0
     bulk_client = client.options(request_timeout=request_timeout)
     for ok, result in helpers.streaming_bulk(
@@ -134,6 +139,7 @@ def bulk_ingest(
         initial_backoff=2,
         max_backoff=30,
         raise_on_error=False,
+        refresh="wait_for",
     ):
         total += 1
         if not ok:
