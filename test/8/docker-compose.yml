@@ -1,5 +1,3 @@
-version: "3.8"
-
 x-elasticsearch-environment: &es-env
   node.store.allow_mmap: "false"
   cluster.name: audit-es8
@@ -18,7 +16,7 @@ x-elasticsearch-environment: &es-env
   xpack.security.transport.ssl.certificate: /usr/share/elasticsearch/config/certs/tls.crt
   xpack.security.transport.ssl.key: /usr/share/elasticsearch/config/certs/tls.key
   ELASTIC_PASSWORD: changeme
-  ES_JAVA_OPTS: -Xms1g -Xmx1g
+  ES_JAVA_OPTS: -Xms512m -Xmx512m
 
 x-elasticsearch-common: &es-common
   image: docker.elastic.co/elasticsearch/elasticsearch:8.12.2
