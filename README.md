@@ -87,6 +87,7 @@ Chaque audit crée un dossier `data/YYYY-MM-DD_HH-mm-ss-<client>-<cluster>` cont
 - Si votre environnement est plus contraint et que vous voyez des arrêts de conteneur avec `137` (OOM), réduisez encore le heap via la variable `ES_JAVA_OPTS` dans les fichiers `docker-compose.yml`.
 - Si le service `data-loader` atteint un timeout réseau, baissez la taille des lots (`BULK_CHUNK_SIZE`) ou augmentez le timeout (`BULK_REQUEST_TIMEOUT`) dans les variables d’environnement du service.
 - Le `data-loader` utilise désormais un fichier JSON local (`test/scripts/dummy_data.json`) copié dans son image pour éviter les téléchargements réseau pendant l’ingestion.
+- Trois workers légers `worker1/2/3` génèrent des recherches et des écritures synthétiques basées sur `dummy_data.json` pour stimuler le cluster après le chargement initial.
 
 ### Cluster Elasticsearch 7.17 (HTTP, authentification basique)
 Un jeu de conteneurs Docker permet de démarrer trois nœuds 7.17.22 sans TLS. L’authentification Elasticsearch est active mais le transport n’est pas chiffré.

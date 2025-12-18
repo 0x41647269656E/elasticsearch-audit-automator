@@ -5,6 +5,7 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY load_data.py ./
+COPY query_worker.py ./
 COPY dummy_data.json ./dummy_data.json
 
 CMD ["python", "load_data.py"]
