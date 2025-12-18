@@ -1,20 +1,13 @@
-import gzip
 import json
 import logging
 import os
 import time
 from typing import Iterable, List
 
-import requests
 from elasticsearch import Elasticsearch, helpers
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
-
-
-def env_list(name: str, default: str = "") -> List[str]:
-    raw = os.getenv(name, default)
-    return [item.strip() for item in raw.split(",") if item.strip()]
 
 
 def build_client(host: str, username: str, password: str, verify: bool, ca_cert: str | None) -> Elasticsearch:
@@ -67,43 +60,66 @@ def create_indices(client: Elasticsearch, index_prefix: str, count: int) -> List
     names = [f"{index_prefix}-{i:02d}" for i in range(1, count + 1)]
     for name in names:
         try:
-            client.indices.create(index=name, ignore=400, body={"settings": {"number_of_shards": 1, "number_of_replicas": 1}})
+            client.indices.create(
+                index=name,
+                ignore=400,
+                body={
+                    "settings": {
+                        "number_of_shards": 1,
+                        "number_of_replicas": 1,
+                        "index.mapping.total_fields.limit": 20000,
+                        "index.mapping.ignore_malformed": True,
+                    },
+                    "mappings": {
+                        "dynamic": True,
+                        "date_detection": False,
+                    },
+                },
+            )
             logger.info("Ensured index %s exists", name)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Index creation issue for %s: %s", name, exc)
     return names
 
 
-def stream_dataset(url: str) -> Iterable[dict]:
-    logger.info("Downloading dataset %s", url)
-    with requests.get(url, stream=True, timeout=120) as resp:
-        resp.raise_for_status()
-        raw_stream = resp.raw
-        if url.endswith(".gz"):
-            raw_stream = gzip.GzipFile(fileobj=resp.raw)
-        for line in raw_stream:
-            if not line:
-                continue
-            try:
-                yield json.loads(line.decode("utf-8"))
-            except json.JSONDecodeError:
-                continue
+def load_local_documents(path: str) -> List[dict]:
+    """Load documents from a local JSON file (array or NDJSON)."""
+    logger.info("Loading local dataset from %s", path)
+    with open(path, "r", encoding="utf-8") as file:
+        raw = file.read()
+    try:
+        data = json.loads(raw)
+        if isinstance(data, dict):
+            return [data]
+        if isinstance(data, list):
+            return data
+    except json.JSONDecodeError:
+        pass
+
+    documents: List[dict] = []
+    for line in raw.splitlines():
+        if not line.strip():
+            continue
+        try:
+            documents.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return documents
 
 
-def generate_actions(urls: List[str], indices: List[str]) -> Iterable[dict]:
+def generate_actions(documents: List[dict], indices: List[str]) -> Iterable[dict]:
     index_count = len(indices)
-    for url in urls:
-        for idx, doc in enumerate(stream_dataset(url)):
-            target_index = indices[idx % index_count]
-            yield {
-                "_index": target_index,
-                "_source": doc,
-            }
+    for idx, doc in enumerate(documents):
+        target_index = indices[idx % index_count]
+        yield {
+            "_index": target_index,
+            "_source": doc,
+        }
 
 
 def bulk_ingest(
     client: Elasticsearch,
-    urls: List[str],
+    documents: List[dict],
     indices: List[str],
     batch_size: int = 500,
     request_timeout: int = 120,
@@ -111,7 +127,7 @@ def bulk_ingest(
     total = 0
     for ok, result in helpers.streaming_bulk(
         client,
-        generate_actions(urls, indices),
+        generate_actions(documents, indices),
         chunk_size=batch_size,
         request_timeout=request_timeout,
         max_retries=5,
@@ -140,11 +156,7 @@ def main() -> None:
     security_enabled = os.getenv("SECURITY_ENABLED", "true").lower() == "true"
     bulk_chunk_size = int(os.getenv("BULK_CHUNK_SIZE", "500"))
     bulk_request_timeout = int(os.getenv("BULK_REQUEST_TIMEOUT", "120"))
-
-    dataset_urls = env_list(
-        "DATASET_URLS",
-        default="https://data.gharchive.org/2024-01-01-0.json.gz,https://data.gharchive.org/2024-01-01-1.json.gz",
-    )
+    data_file = os.getenv("DATA_FILE", "/app/dummy_data.json")
 
     admin_client = build_client(host, username if security_enabled else "", password if security_enabled else "", verify_certs, ca_cert)
     wait_for_green(admin_client)
@@ -156,7 +168,8 @@ def main() -> None:
         ingest_client = admin_client
 
     indices = create_indices(ingest_client, index_prefix, index_count)
-    bulk_ingest(ingest_client, dataset_urls, indices, batch_size=bulk_chunk_size, request_timeout=bulk_request_timeout)
+    documents = load_local_documents(data_file)
+    bulk_ingest(ingest_client, documents, indices, batch_size=bulk_chunk_size, request_timeout=bulk_request_timeout)
 
     logger.info("Data load complete for indices: %s", ", ".join(indices))
 

@@ -86,6 +86,7 @@ Chaque audit crée un dossier `data/YYYY-MM-DD_HH-mm-ss-<client>-<cluster>` cont
 - Environ 8 Go de RAM libre (3 nœuds Elasticsearch + service de chargement de données + Kibana)
 - Si votre environnement est plus contraint et que vous voyez des arrêts de conteneur avec `137` (OOM), réduisez encore le heap via la variable `ES_JAVA_OPTS` dans les fichiers `docker-compose.yml`.
 - Si le service `data-loader` atteint un timeout réseau, baissez la taille des lots (`BULK_CHUNK_SIZE`) ou augmentez le timeout (`BULK_REQUEST_TIMEOUT`) dans les variables d’environnement du service.
+- Le `data-loader` utilise désormais un fichier JSON local (`test/scripts/dummy_data.json`) copié dans son image pour éviter les téléchargements réseau pendant l’ingestion.
 
 ### Cluster Elasticsearch 7.17 (HTTP, authentification basique)
 Un jeu de conteneurs Docker permet de démarrer trois nœuds 7.17.22 sans TLS. L’authentification Elasticsearch est active mais le transport n’est pas chiffré.
@@ -104,7 +105,7 @@ Paramètres clés :
 - Superuser initial : `elastic` / `changeme`
 - Utilisateur d’audit : `audit-elasticsearch` / `audit-me` (créé automatiquement)
 - Indices générés automatiquement : `audit-demo-7-01` à `audit-demo-7-10`
-- Jeux de données (~500 Mo) tirés des dumps publics GitHub Archive (`DATASET_URLS` dans le compose)
+- Jeux de données : documents factices inclus dans `test/scripts/dummy_data.json` et copiés dans l’image `data-loader`
 - Kibana : http://localhost:5601 (authentification `elastic`/`changeme` ou `audit-elasticsearch`/`audit-me`)
 
 ### Cluster Elasticsearch 8.x (HTTPS avec certificats)
@@ -129,7 +130,29 @@ Paramètres clés :
 - Indices générés automatiquement : `audit-demo-8-01` à `audit-demo-8-10`
 - Kibana : https://localhost:5602 (certificat AC `test/certs/ca.crt`, authentification `elastic`/`changeme` ou `audit-elasticsearch`/`audit-me`)
 
-Le service `data-loader` vérifie la santé du cluster, attend l’état `green`, crée l’utilisateur cible si besoin, provisionne 10 indices et charge plusieurs fichiers JSON publics (~500 Mo) en bulk.
+Le service `data-loader` vérifie la santé du cluster, attend l’état `green`, crée l’utilisateur cible si besoin, provisionne 10 indices et charge les documents factices embarqués (`dummy_data.json`).
+
+### Cluster Elasticsearch 9.x (HTTPS avec certificats)
+La pile 9.x (Elasticsearch/Kibana 9.2.0) démarre avec TLS activé et réutilise les certificats partagés dans `test/certs` (générables avec `test/9/generate-certs.sh`). Les ports sont décalés pour cohabiter avec les autres stacks.
+
+Commandes :
+```bash
+# Facultatif : régénérer les certificats
+CERTS_DIR=$(pwd)/test/certs sh test/9/generate-certs.sh
+
+docker compose -f test/9/docker-compose.yml up -d
+docker compose -f test/9/docker-compose.yml logs -f data-loader
+```
+
+Paramètres clés :
+- Accès HTTPS : `https://localhost:9400`
+- AC et certificats : `test/certs/ca.crt`, `test/certs/tls.crt`, `test/certs/tls.key`
+- Superuser initial : `elastic` / `changeme`
+- Utilisateur d’audit : `audit-elasticsearch` / `audit-me`
+- Indices générés automatiquement : `audit-demo-9-01` à `audit-demo-9-10`
+- Kibana : https://localhost:5603 (certificat AC `test/certs/ca.crt`, authentification `elastic`/`changeme` ou `audit-elasticsearch`/`audit-me`)
+
+Le service `data-loader` vérifie la santé du cluster, attend l’état `green`, crée l’utilisateur cible si besoin, provisionne 10 indices et charge les documents du fichier local embarqué (`dummy_data.json`).
 
 ### Utiliser `main.py` contre les clusters de test
 #### Mode HTTP (cluster 7.17)

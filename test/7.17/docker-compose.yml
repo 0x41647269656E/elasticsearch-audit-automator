@@ -86,7 +86,6 @@ services:
       TARGET_PASSWORD: audit-me
       INDEX_COUNT: 10
       TARGET_INDEX_PREFIX: audit-demo-7
-      DATASET_URLS: https://data.gharchive.org/2024-01-01-0.json.gz,https://data.gharchive.org/2024-01-01-1.json.gz,https://data.gharchive.org/2024-01-01-2.json.gz,https://data.gharchive.org/2024-01-01-3.json.gz
       VERIFY_CERTS: "false"
       ELASTIC_CLIENT_APIVERSIONING: "true"
       BULK_CHUNK_SIZE: 500
