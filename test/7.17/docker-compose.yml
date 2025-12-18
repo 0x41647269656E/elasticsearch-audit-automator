@@ -5,14 +5,8 @@ x-elasticsearch-environment: &es-env
   cluster.initial_master_nodes: es01,es02,es03
   network.host: 0.0.0.0
   bootstrap.memory_lock: "true"
-  xpack.security.enabled: "true"
-  xpack.security.transport.ssl.enabled: "true"
-  xpack.security.transport.ssl.verification_mode: certificate
-  xpack.security.transport.ssl.certificate_authorities: /usr/share/elasticsearch/config/certs/ca.crt
-  xpack.security.transport.ssl.certificate: /usr/share/elasticsearch/config/certs/tls.crt
-  xpack.security.transport.ssl.key: /usr/share/elasticsearch/config/certs/tls.key
+  xpack.security.enabled: "false"
   xpack.security.http.ssl.enabled: "false"
-  ELASTIC_PASSWORD: changeme
   ES_JAVA_OPTS: -Xms512m -Xmx512m
 
 x-elasticsearch-common: &es-common
@@ -22,8 +16,6 @@ x-elasticsearch-common: &es-common
     memlock:
       soft: -1
       hard: -1
-  volumes:
-    - ../certs:/usr/share/elasticsearch/config/certs:ro
   healthcheck:
     test: ["CMD", "curl", "-s", "http://localhost:9200/_cluster/health"]
     interval: 10s
@@ -97,6 +89,7 @@ services:
       ELASTIC_CLIENT_APIVERSIONING: "true"
       BULK_CHUNK_SIZE: 500
       BULK_REQUEST_TIMEOUT: 120
+      SECURITY_ENABLED: "false"
     command: ["python", "load_data.py"]
 
   kibana:

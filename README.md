@@ -87,11 +87,10 @@ Chaque audit crée un dossier `data/YYYY-MM-DD_HH-mm-ss-<client>-<cluster>` cont
 - Si votre environnement est plus contraint et que vous voyez des arrêts de conteneur avec `137` (OOM), réduisez encore le heap via la variable `ES_JAVA_OPTS` dans les fichiers `docker-compose.yml`.
 - Si le service `data-loader` atteint un timeout réseau, baissez la taille des lots (`BULK_CHUNK_SIZE`) ou augmentez le timeout (`BULK_REQUEST_TIMEOUT`) dans les variables d’environnement du service.
 
-### Cluster Elasticsearch 7.17 (HTTP, basic auth)
-Un jeu de conteneurs Docker permet de démarrer trois nœuds 7.17.22 avec sécurité activée et un utilisateur `audit-elasticsearch`/`audit-me` créé automatiquement par le service `data-loader` après vérification que le cluster est `green`.
+### Cluster Elasticsearch 7.17 (HTTP, sans TLS)
+Un jeu de conteneurs Docker permet de démarrer trois nœuds 7.17.22 sans TLS. L’authentification Elasticsearch est désactivée sur cette pile pour simplifier les tests réseau (aucun certificat ni mot de passe requis).
 
 Chaque nœud Elasticsearch est limité à 512 Mo de heap (`ES_JAVA_OPTS`) et à 1 Go de mémoire conteneur, et Kibana est limité à 512 Mo.
-Le transport inter-nœuds est chiffré (certificats partagés dans `test/certs`) pour respecter les exigences de sécurité Elasticsearch.
 
 Commandes :
 ```bash
@@ -102,11 +101,9 @@ docker compose -f test/7.17/docker-compose.yml logs -f data-loader
 
 Paramètres clés :
 - Accès HTTP : `http://localhost:9200`
-- Superuser initial : `elastic` / `changeme`
-- Utilisateur d’audit : `audit-elasticsearch` / `audit-me`
 - Indices générés automatiquement : `audit-demo-7-01` à `audit-demo-7-10`
 - Jeux de données (~500 Mo) tirés des dumps publics GitHub Archive (`DATASET_URLS` dans le compose)
-- Kibana : http://localhost:5601 (authentification `elastic`/`changeme` ou `audit-elasticsearch`/`audit-me`)
+- Kibana : http://localhost:5601 (sans authentification)
 
 ### Cluster Elasticsearch 8.x (HTTPS avec certificats)
 La pile 8.12.2 démarre avec TLS activé. Un conteneur `certgen` génère une AC et un certificat serveur partagés placés dans `test/certs` (déjà pré-générés dans le dépôt et régénérables via `test/8/generate-certs.sh`).
@@ -139,8 +136,6 @@ python main.py \
   --host localhost \
   --port 9200 \
   --scheme http \
-  --username audit-elasticsearch \
-  --password audit-me \
   --client-name local-lab \
   --cluster-name audit-es7
 ```
