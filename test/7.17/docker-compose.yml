@@ -9,9 +9,9 @@ x-elasticsearch-environment: &es-env
   xpack.security.http.ssl.enabled: "false"
   xpack.security.transport.ssl.enabled: "true"
   xpack.security.transport.ssl.verification_mode: certificate
-  xpack.security.transport.ssl.certificate_authorities: /usr/share/elasticsearch/config/certs/ca.crt
-  xpack.security.transport.ssl.certificate: /usr/share/elasticsearch/config/certs/tls.crt
-  xpack.security.transport.ssl.key: /usr/share/elasticsearch/config/certs/tls.key
+  xpack.security.transport.ssl.certificate_authorities: /usr/share/elasticsearch/config/certs/ca/ca.crt
+  xpack.security.transport.ssl.certificate: /usr/share/elasticsearch/config/certs/certs/es01.crt
+  xpack.security.transport.ssl.key: /usr/share/elasticsearch/config/certs/certs/es01.key
   ELASTIC_PASSWORD: changeme
   ES_JAVA_OPTS: -Xms512m -Xmx512m
 
@@ -23,7 +23,7 @@ x-elasticsearch-common: &es-common
       soft: -1
       hard: -1
   volumes:
-    - ../certs:/usr/share/elasticsearch/config/certs:ro
+    - certs:/usr/share/elasticsearch/config/certs
   healthcheck:
     test: ["CMD", "curl", "-s", "http://localhost:9200/_cluster/health"]
     interval: 10s
@@ -32,10 +32,36 @@ x-elasticsearch-common: &es-common
     start_period: 20s
 
 services:
+  setup:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.29
+    container_name: es7-setup
+    user: "0"
+    volumes:
+      - certs:/usr/share/elasticsearch/config/certs
+    command: >
+      bash -c '
+        if [ ! -f config/certs/ca/ca.crt ]; then
+          echo ">> Generating CA";
+          bin/elasticsearch-certutil ca --silent --pem -out config/certs/ca.zip;
+          unzip config/certs/ca.zip -d config/certs;
+          echo ">> Generating node certs";
+          bin/elasticsearch-certutil cert --silent --pem
+            --ca-cert config/certs/ca/ca.crt
+            --ca-key config/certs/ca/ca.key
+            --out config/certs/certs.zip
+            --dns es01,es02,es03,localhost;
+          unzip config/certs/certs.zip -d config/certs;
+        fi;
+        chown -R 1000:0 config/certs
+      '
+
   es01:
     <<: *es-common
     container_name: es01
     mem_limit: 1g
+    depends_on:
+      setup:
+        condition: service_completed_successfully
     ports:
       - "9200:9200"
     environment:
@@ -43,13 +69,19 @@ services:
       node.name: es01
       http.port: 9200
       transport.port: 9300
+      xpack.security.transport.ssl.certificate: /usr/share/elasticsearch/config/certs/certs/es01.crt
+      xpack.security.transport.ssl.key: /usr/share/elasticsearch/config/certs/certs/es01.key
     volumes:
       - es7-es01-data:/usr/share/elasticsearch/data
+      - certs:/usr/share/elasticsearch/config/certs
 
   es02:
     <<: *es-common
     container_name: es02
     mem_limit: 1g
+    depends_on:
+      setup:
+        condition: service_completed_successfully
     ports:
       - "9201:9200"
     environment:
@@ -57,13 +89,19 @@ services:
       node.name: es02
       http.port: 9200
       transport.port: 9300
+      xpack.security.transport.ssl.certificate: /usr/share/elasticsearch/config/certs/certs/es02.crt
+      xpack.security.transport.ssl.key: /usr/share/elasticsearch/config/certs/certs/es02.key
     volumes:
       - es7-es02-data:/usr/share/elasticsearch/data
+      - certs:/usr/share/elasticsearch/config/certs
 
   es03:
     <<: *es-common
     container_name: es03
     mem_limit: 1g
+    depends_on:
+      setup:
+        condition: service_completed_successfully
     ports:
       - "9202:9200"
     environment:
@@ -71,8 +109,11 @@ services:
       node.name: es03
       http.port: 9200
       transport.port: 9300
+      xpack.security.transport.ssl.certificate: /usr/share/elasticsearch/config/certs/certs/es03.crt
+      xpack.security.transport.ssl.key: /usr/share/elasticsearch/config/certs/certs/es03.key
     volumes:
       - es7-es03-data:/usr/share/elasticsearch/data
+      - certs:/usr/share/elasticsearch/config/certs
 
   data-loader:
     build:
@@ -168,6 +209,7 @@ services:
         condition: service_healthy
 
 volumes:
+  certs:
   es7-es01-data:
   es7-es02-data:
   es7-es03-data:

@@ -7,14 +7,14 @@ x-elasticsearch-environment: &es-env
   bootstrap.memory_lock: "true"
   xpack.security.enabled: "true"
   xpack.security.http.ssl.enabled: "true"
-  xpack.security.http.ssl.key: /usr/share/elasticsearch/config/certs/tls.key
-  xpack.security.http.ssl.certificate: /usr/share/elasticsearch/config/certs/tls.crt
-  xpack.security.http.ssl.certificate_authorities: /usr/share/elasticsearch/config/certs/ca.crt
+  xpack.security.http.ssl.key: /usr/share/elasticsearch/config/certs/certs/es01.key
+  xpack.security.http.ssl.certificate: /usr/share/elasticsearch/config/certs/certs/es01.crt
+  xpack.security.http.ssl.certificate_authorities: /usr/share/elasticsearch/config/certs/ca/ca.crt
   xpack.security.transport.ssl.enabled: "true"
   xpack.security.transport.ssl.verification_mode: certificate
-  xpack.security.transport.ssl.certificate_authorities: /usr/share/elasticsearch/config/certs/ca.crt
-  xpack.security.transport.ssl.certificate: /usr/share/elasticsearch/config/certs/tls.crt
-  xpack.security.transport.ssl.key: /usr/share/elasticsearch/config/certs/tls.key
+  xpack.security.transport.ssl.certificate_authorities: /usr/share/elasticsearch/config/certs/ca/ca.crt
+  xpack.security.transport.ssl.certificate: /usr/share/elasticsearch/config/certs/certs/es01.crt
+  xpack.security.transport.ssl.key: /usr/share/elasticsearch/config/certs/certs/es01.key
   ELASTIC_PASSWORD: changeme
   ES_JAVA_OPTS: -Xms512m -Xmx512m
 
@@ -26,7 +26,7 @@ x-elasticsearch-common: &es-common
       soft: -1
       hard: -1
   volumes:
-    - ../certs:/usr/share/elasticsearch/config/certs:rw
+    - certs:/usr/share/elasticsearch/config/certs:rw
   healthcheck:
     test: ["CMD", "curl", "-s", "-k", "https://localhost:9200/_cluster/health"]
     interval: 10s
@@ -35,21 +35,35 @@ x-elasticsearch-common: &es-common
     start_period: 20s
 
 services:
-  certgen:
-    image: alpine:3.19
-    container_name: es9-certgen
-    entrypoint: /bin/sh
-    command: -c "apk add --no-cache openssl && /scripts/generate-certs.sh"
+  setup:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.2.0
+    container_name: es9-setup
+    user: "0"
     volumes:
-      - ../certs:/certs
-      - ./generate-certs.sh:/scripts/generate-certs.sh:ro
+      - certs:/usr/share/elasticsearch/config/certs
+    command: >
+      bash -c '
+        if [ ! -f config/certs/ca/ca.crt ]; then
+          echo ">> Generating CA";
+          bin/elasticsearch-certutil ca --silent --pem -out config/certs/ca.zip;
+          unzip config/certs/ca.zip -d config/certs;
+          echo ">> Generating node certs";
+          bin/elasticsearch-certutil cert --silent --pem
+            --ca-cert config/certs/ca/ca.crt
+            --ca-key config/certs/ca/ca.key
+            --out config/certs/certs.zip
+            --dns es01,es02,es03,localhost;
+          unzip config/certs/certs.zip -d config/certs;
+        fi;
+        chown -R 1000:0 config/certs
+      '
 
   es01:
     <<: *es-common
     container_name: es9-es01
     mem_limit: 1g
     depends_on:
-      certgen:
+      setup:
         condition: service_completed_successfully
     ports:
       - "9400:9200"
@@ -58,16 +72,20 @@ services:
       node.name: es01
       http.port: 9200
       transport.port: 9300
+      xpack.security.http.ssl.certificate: /usr/share/elasticsearch/config/certs/certs/es01.crt
+      xpack.security.http.ssl.key: /usr/share/elasticsearch/config/certs/certs/es01.key
+      xpack.security.transport.ssl.certificate: /usr/share/elasticsearch/config/certs/certs/es01.crt
+      xpack.security.transport.ssl.key: /usr/share/elasticsearch/config/certs/certs/es01.key
     volumes:
       - es9-es01-data:/usr/share/elasticsearch/data
-      - ../certs:/usr/share/elasticsearch/config/certs:ro
+      - certs:/usr/share/elasticsearch/config/certs
 
   es02:
     <<: *es-common
     container_name: es9-es02
     mem_limit: 1g
     depends_on:
-      certgen:
+      setup:
         condition: service_completed_successfully
     ports:
       - "9401:9200"
@@ -76,16 +94,20 @@ services:
       node.name: es02
       http.port: 9200
       transport.port: 9300
+      xpack.security.http.ssl.certificate: /usr/share/elasticsearch/config/certs/certs/es02.crt
+      xpack.security.http.ssl.key: /usr/share/elasticsearch/config/certs/certs/es02.key
+      xpack.security.transport.ssl.certificate: /usr/share/elasticsearch/config/certs/certs/es02.crt
+      xpack.security.transport.ssl.key: /usr/share/elasticsearch/config/certs/certs/es02.key
     volumes:
       - es9-es02-data:/usr/share/elasticsearch/data
-      - ../certs:/usr/share/elasticsearch/config/certs:ro
+      - certs:/usr/share/elasticsearch/config/certs
 
   es03:
     <<: *es-common
     container_name: es9-es03
     mem_limit: 1g
     depends_on:
-      certgen:
+      setup:
         condition: service_completed_successfully
     ports:
       - "9402:9200"
@@ -94,9 +116,13 @@ services:
       node.name: es03
       http.port: 9200
       transport.port: 9300
+      xpack.security.http.ssl.certificate: /usr/share/elasticsearch/config/certs/certs/es03.crt
+      xpack.security.http.ssl.key: /usr/share/elasticsearch/config/certs/certs/es03.key
+      xpack.security.transport.ssl.certificate: /usr/share/elasticsearch/config/certs/certs/es03.crt
+      xpack.security.transport.ssl.key: /usr/share/elasticsearch/config/certs/certs/es03.key
     volumes:
       - es9-es03-data:/usr/share/elasticsearch/data
-      - ../certs:/usr/share/elasticsearch/config/certs:ro
+      - certs:/usr/share/elasticsearch/config/certs
 
   data-loader:
     build:
@@ -117,13 +143,13 @@ services:
       INDEX_COUNT: 10
       TARGET_INDEX_PREFIX: audit-demo-9
       VERIFY_CERTS: "true"
-      CA_CERT_PATH: /certs/ca.crt
+      CA_CERT_PATH: /certs/ca/ca.crt
       ELASTIC_CLIENT_APIVERSIONING: "true"
       BULK_CHUNK_SIZE: 500
       BULK_REQUEST_TIMEOUT: 120
       SECURITY_ENABLED: "true"
     volumes:
-      - ../certs:/certs:ro
+      - certs:/certs:ro
     command: ["python", "load_data.py"]
 
   worker1:
@@ -138,11 +164,11 @@ services:
       ELASTIC_PASSWORD: changeme
       TARGET_INDEX_PREFIX: audit-demo-9
       VERIFY_CERTS: "true"
-      CA_CERT_PATH: /certs/ca.crt
+      CA_CERT_PATH: /certs/ca/ca.crt
       WORKER_ID: worker1
       WORKER_OPS: 100
     volumes:
-      - ../certs:/certs:ro
+      - certs:/certs:ro
     command: ["python", "query_worker.py"]
 
   worker2:
@@ -157,11 +183,11 @@ services:
       ELASTIC_PASSWORD: changeme
       TARGET_INDEX_PREFIX: audit-demo-9
       VERIFY_CERTS: "true"
-      CA_CERT_PATH: /certs/ca.crt
+      CA_CERT_PATH: /certs/ca/ca.crt
       WORKER_ID: worker2
       WORKER_OPS: 100
     volumes:
-      - ../certs:/certs:ro
+      - certs:/certs:ro
     command: ["python", "query_worker.py"]
 
   worker3:
@@ -176,11 +202,11 @@ services:
       ELASTIC_PASSWORD: changeme
       TARGET_INDEX_PREFIX: audit-demo-9
       VERIFY_CERTS: "true"
-      CA_CERT_PATH: /certs/ca.crt
+      CA_CERT_PATH: /certs/ca/ca.crt
       WORKER_ID: worker3
       WORKER_OPS: 100
     volumes:
-      - ../certs:/certs:ro
+      - certs:/certs:ro
     command: ["python", "query_worker.py"]
 
   kibana:
@@ -191,7 +217,7 @@ services:
       ELASTICSEARCH_HOSTS: https://es01:9200
       ELASTICSEARCH_USERNAME: elastic
       ELASTICSEARCH_PASSWORD: changeme
-      ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES: /certs/ca.crt
+      ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES: /certs/ca/ca.crt
       SERVER_NAME: kibana9
       SERVER_HOST: 0.0.0.0
       SERVER_SSL_ENABLED: "false"
@@ -206,9 +232,10 @@ services:
       es03:
         condition: service_healthy
     volumes:
-      - ../certs:/certs:ro
+      - certs:/certs:ro
 
 volumes:
+  certs:
   es9-es01-data:
   es9-es02-data:
   es9-es03-data:

@@ -88,9 +88,10 @@ Chaque audit crée un dossier `data/YYYY-MM-DD_HH-mm-ss-<client>-<cluster>` cont
 - Si le service `data-loader` atteint un timeout réseau, baissez la taille des lots (`BULK_CHUNK_SIZE`) ou augmentez le timeout (`BULK_REQUEST_TIMEOUT`) dans les variables d’environnement du service.
 - Le `data-loader` utilise désormais un fichier JSON local (`test/scripts/dummy_data.json`) copié dans son image pour éviter les téléchargements réseau pendant l’ingestion.
 - Trois workers légers `worker1/2/3` génèrent des recherches et des écritures synthétiques basées sur `dummy_data.json` pour stimuler le cluster après le chargement initial.
+- Les certificats TLS nécessaires au transport chiffré sont générés automatiquement par un conteneur `setup` et stockés dans le volume `certs` de chaque stack ; supprimez le volume pour forcer une régénération.
 
 ### Cluster Elasticsearch 7.17 (HTTP, auth basique, transport chiffré)
-Un jeu de conteneurs Docker permet de démarrer trois nœuds 7.17.29 sans TLS côté HTTP mais avec sécurité activée. Le transport inter-nœuds est chiffré via les certificats partagés dans `test/certs`, ce qui satisfait les bootstrap checks tout en conservant des appels HTTP simples pour les clients.
+Un jeu de conteneurs Docker permet de démarrer trois nœuds 7.17.29 sans TLS côté HTTP mais avec sécurité activée. Le transport inter-nœuds est chiffré via des certificats générés automatiquement par le conteneur `setup` dans le volume `certs`, ce qui satisfait les bootstrap checks tout en conservant des appels HTTP simples pour les clients.
 
 Chaque nœud Elasticsearch est limité à 512 Mo de heap (`ES_JAVA_OPTS`) et à 1 Go de mémoire conteneur, et Kibana est limité à 512 Mo.
 
@@ -110,15 +111,12 @@ Paramètres clés :
 - Kibana : http://localhost:5601 (authentification `elastic`/`changeme` ou `audit-elasticsearch`/`audit-me`)
 
 ### Cluster Elasticsearch 8.x (HTTPS avec certificats)
-La pile 8.12.2 démarre avec TLS activé. Un conteneur `certgen` génère une AC et un certificat serveur partagés placés dans `test/certs` (déjà pré-générés dans le dépôt et régénérables via `test/8/generate-certs.sh`).
+La pile 8.12.2 démarre avec TLS activé. Un conteneur `setup` génère automatiquement les certificats (AC + nœuds) dans le volume `certs`.
 
 Chaque nœud Elasticsearch est limité à 512 Mo de heap et 1 Go de mémoire conteneur, Kibana est limité à 512 Mo.
 
 Commandes :
 ```bash
-# Facultatif : régénérer les certificats
-CERTS_DIR=$(pwd)/test/certs sh test/8/generate-certs.sh
-
 docker compose -f test/8/docker-compose.yml up -d
 docker compose -f test/8/docker-compose.yml logs -f data-loader
 ```
@@ -134,13 +132,10 @@ Paramètres clés :
 Le service `data-loader` vérifie la santé du cluster, attend l’état `green`, crée l’utilisateur cible si besoin, provisionne 10 indices et charge les documents factices embarqués (`dummy_data.json`).
 
 ### Cluster Elasticsearch 9.x (HTTPS avec certificats)
-La pile 9.x (Elasticsearch/Kibana 9.2.0) démarre avec TLS activé et réutilise les certificats partagés dans `test/certs` (générables avec `test/9/generate-certs.sh`). Les ports sont décalés pour cohabiter avec les autres stacks.
+La pile 9.x (Elasticsearch/Kibana 9.2.0) démarre avec TLS activé et génère automatiquement ses certificats dans le volume `certs` via le conteneur `setup`. Les ports sont décalés pour cohabiter avec les autres stacks.
 
 Commandes :
 ```bash
-# Facultatif : régénérer les certificats
-CERTS_DIR=$(pwd)/test/certs sh test/9/generate-certs.sh
-
 docker compose -f test/9/docker-compose.yml up -d
 docker compose -f test/9/docker-compose.yml logs -f data-loader
 ```
