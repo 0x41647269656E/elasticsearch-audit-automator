@@ -26,7 +26,7 @@ def wait_for_green(client: Elasticsearch, timeout: int = 600) -> None:
     start = time.time()
     while True:
         try:
-            health = client.cluster.health(request_timeout=60)
+            health = client.options(request_timeout=60).cluster.health()
             status = health.get("status")
             logger.info("Cluster health: %s", status)
             if status == "green":
@@ -60,9 +60,8 @@ def create_indices(client: Elasticsearch, index_prefix: str, count: int) -> List
     names = [f"{index_prefix}-{i:02d}" for i in range(1, count + 1)]
     for name in names:
         try:
-            client.indices.create(
+            client.options(ignore_status=[400]).indices.create(
                 index=name,
-                ignore=400,
                 body={
                     "settings": {
                         "number_of_shards": 1,
@@ -124,16 +123,21 @@ def bulk_ingest(
     batch_size: int = 500,
     request_timeout: int = 120,
 ) -> None:
+    if not documents:
+        logger.warning("No documents found to ingest")
+        return
+
+    bulk_client = client.options(request_timeout=request_timeout)
     total = 0
     for ok, result in helpers.streaming_bulk(
-        client,
+        bulk_client,
         generate_actions(documents, indices),
         chunk_size=batch_size,
-        request_timeout=request_timeout,
         max_retries=5,
         initial_backoff=2,
         max_backoff=30,
         raise_on_error=False,
+        refresh="wait_for",
     ):
         total += 1
         if not ok:
