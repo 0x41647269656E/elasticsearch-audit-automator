@@ -1,0 +1,84 @@
+[
+  {
+    "event": "repo_push",
+    "repo": "example/repo",
+    "branch": "main",
+    "author": "alice",
+    "lines_added": 120,
+    "lines_deleted": 30,
+    "timestamp": "2024-01-01T12:00:00Z"
+  },
+  {
+    "event": "issue_opened",
+    "repo": "example/repo",
+    "issue_id": 42,
+    "title": "Improve indexing performance",
+    "labels": ["performance", "elasticsearch"],
+    "author": "bob",
+    "timestamp": "2024-01-02T08:15:00Z"
+  },
+  {
+    "event": "issue_commented",
+    "repo": "example/repo",
+    "issue_id": 42,
+    "author": "carol",
+    "comment": "Consider adjusting thread_pool.bulk.queue_size",
+    "timestamp": "2024-01-02T09:00:00Z"
+  },
+  {
+    "event": "pull_request_opened",
+    "repo": "example/repo",
+    "pr_id": 101,
+    "title": "Add TLS audit reporting",
+    "author": "dave",
+    "base": "main",
+    "head": "feature/tls-audit",
+    "timestamp": "2024-01-03T10:00:00Z"
+  },
+  {
+    "event": "deployment",
+    "service": "web",
+    "environment": "staging",
+    "version": "v1.2.3",
+    "duration_ms": 42000,
+    "timestamp": "2024-01-03T12:30:00Z"
+  },
+  {
+    "event": "alert",
+    "severity": "warning",
+    "component": "disk",
+    "host": "node-1",
+    "usage_percent": 82.5,
+    "timestamp": "2024-01-04T07:45:00Z"
+  },
+  {
+    "event": "backup",
+    "snapshot": "snap-2024-01-04",
+    "status": "success",
+    "duration_s": 3600,
+    "indices": ["logs-*", "metrics-*"],
+    "timestamp": "2024-01-04T23:00:00Z"
+  },
+  {
+    "event": "ingest_metric",
+    "metric": "cpu_percent",
+    "host": "node-2",
+    "value": 65.2,
+    "timestamp": "2024-01-05T11:00:00Z"
+  },
+  {
+    "event": "ingest_metric",
+    "metric": "heap_percent",
+    "host": "node-2",
+    "value": 71.9,
+    "timestamp": "2024-01-05T11:00:10Z"
+  },
+  {
+    "event": "security_audit",
+    "user": "elastic",
+    "action": "login",
+    "result": "success",
+    "ip": "192.0.2.5",
+    "timestamp": "2024-01-05T12:00:00Z"
+  }
+]
