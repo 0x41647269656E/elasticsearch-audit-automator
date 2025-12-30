@@ -150,6 +150,8 @@ services:
           condition: service_healthy
         es03:
           condition: service_healthy
+      volumes:
+        - ../scripts/dummy_data.json:/app/dummy_data.json:ro
       environment:
         ELASTIC_HOST: http://es01:9200
         ELASTIC_USERNAME: elastic
@@ -157,7 +159,7 @@ services:
         TARGET_USERNAME: audit-elasticsearch
         TARGET_PASSWORD: audit-me
         INDEX_COUNT: 10
-        TARGET_INDEX_PREFIX: audit-demo-7
+        TARGET_INDEX_PREFIX: audit-demo-7.17
         VERIFY_CERTS: "false"
         ELASTIC_CLIENT_APIVERSIONING: "true"
         BULK_CHUNK_SIZE: 500
@@ -175,7 +177,7 @@ services:
       ELASTIC_HOST: http://es01:9200
       ELASTIC_USERNAME: elastic
       ELASTIC_PASSWORD: changeme
-      TARGET_INDEX_PREFIX: audit-demo-7
+      TARGET_INDEX_PREFIX: audit-demo-7.17
       VERIFY_CERTS: "false"
       WORKER_ID: worker1
       WORKER_OPS: 100

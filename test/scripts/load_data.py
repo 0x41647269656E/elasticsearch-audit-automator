@@ -116,7 +116,6 @@ def generate_actions(documents: List[dict], indices: List[str]) -> Iterable[dict
             "_source": doc,
         }
 
-
 def bulk_ingest(
     client: Elasticsearch,
     documents: List[dict],
@@ -128,9 +127,13 @@ def bulk_ingest(
         logger.warning("No documents found to ingest")
         return
 
-    bulk_client = client.options(request_timeout=request_timeout)
     total = 0
-    bulk_client = client.options(request_timeout=request_timeout)
+
+    bulk_client = client.options(
+        request_timeout=request_timeout,
+        refresh="wait_for"
+    )
+
     for ok, result in helpers.streaming_bulk(
         bulk_client,
         generate_actions(documents, indices),
