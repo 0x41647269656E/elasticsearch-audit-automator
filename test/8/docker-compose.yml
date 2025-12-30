@@ -13,9 +13,11 @@ x-elasticsearch-environment: &es-env
   xpack.security.transport.ssl.certificate_authorities: /usr/share/elasticsearch/config/certs/ca/ca.crt
   ELASTIC_PASSWORD: changeme
   ES_JAVA_OPTS: -Xms512m -Xmx512m
+  http.port: 9200
+  transport.port: 9300
 
 x-elasticsearch-common: &es-common
-  image: docker.elastic.co/elasticsearch/elasticsearch:8.12.2
+  image: docker.elastic.co/elasticsearch/elasticsearch:8.19.9
   environment: *es-env
   ulimits:
     memlock:
@@ -32,7 +34,7 @@ x-elasticsearch-common: &es-common
 
 services:
   setup:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.2
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.9
     container_name: es8-setup
     user: "0"
     volumes:
@@ -73,8 +75,6 @@ services:
     environment:
       <<: *es-env
       node.name: es01
-      http.port: 9200
-      transport.port: 9300
       xpack.security.http.ssl.certificate: /usr/share/elasticsearch/config/certs/es01/es01.crt
       xpack.security.http.ssl.key: /usr/share/elasticsearch/config/certs/es01/es01.key
       xpack.security.transport.ssl.certificate: /usr/share/elasticsearch/config/certs/es01/es01.crt
@@ -95,8 +95,6 @@ services:
     environment:
       <<: *es-env
       node.name: es02
-      http.port: 9200
-      transport.port: 9300
       xpack.security.http.ssl.certificate: /usr/share/elasticsearch/config/certs/es02/es02.crt
       xpack.security.http.ssl.key: /usr/share/elasticsearch/config/certs/es02/es02.key
       xpack.security.transport.ssl.certificate: /usr/share/elasticsearch/config/certs/es02/es02.crt
@@ -117,8 +115,6 @@ services:
     environment:
       <<: *es-env
       node.name: es03
-      http.port: 9200
-      transport.port: 9300
       xpack.security.http.ssl.certificate: /usr/share/elasticsearch/config/certs/es03/es03.crt
       xpack.security.http.ssl.key: /usr/share/elasticsearch/config/certs/es03/es03.key
       xpack.security.transport.ssl.certificate: /usr/share/elasticsearch/config/certs/es03/es03.crt
@@ -127,93 +123,93 @@ services:
       - es8-es03-data:/usr/share/elasticsearch/data
       - certs:/usr/share/elasticsearch/config/certs
 
-  data-loader:
-    build:
-      context: ../scripts
-    depends_on:
-      es01:
-        condition: service_healthy
-      es02:
-        condition: service_healthy
-      es03:
-        condition: service_healthy
-    environment:
-      ELASTIC_HOST: https://es01:9200
-      ELASTIC_USERNAME: elastic
-      ELASTIC_PASSWORD: changeme
-      TARGET_USERNAME: audit-elasticsearch
-      TARGET_PASSWORD: audit-me
-      INDEX_COUNT: 10
-      TARGET_INDEX_PREFIX: audit-demo-8
-      VERIFY_CERTS: "true"
-      CA_CERT_PATH: /certs/ca/ca.crt
-      ELASTIC_CLIENT_APIVERSIONING: "true"
-      BULK_CHUNK_SIZE: 500
-      BULK_REQUEST_TIMEOUT: 120
-      SECURITY_ENABLED: "true"
-    volumes:
-      - certs:/certs:ro
-    command: ["python", "load_data.py"]
+  # data-loader:
+  #   build:
+  #     context: ../scripts
+  #   depends_on:
+  #     es01:
+  #       condition: service_healthy
+  #     es02:
+  #       condition: service_healthy
+  #     es03:
+  #       condition: service_healthy
+  #   environment:
+  #     ELASTIC_HOST: https://es01:9200
+  #     ELASTIC_USERNAME: elastic
+  #     ELASTIC_PASSWORD: changeme
+  #     TARGET_USERNAME: audit-elasticsearch
+  #     TARGET_PASSWORD: audit-me
+  #     INDEX_COUNT: 10
+  #     TARGET_INDEX_PREFIX: audit-demo-8
+  #     VERIFY_CERTS: "true"
+  #     CA_CERT_PATH: /certs/ca/ca.crt
+  #     ELASTIC_CLIENT_APIVERSIONING: "true"
+  #     BULK_CHUNK_SIZE: 500
+  #     BULK_REQUEST_TIMEOUT: 120
+  #     SECURITY_ENABLED: "true"
+  #   volumes:
+  #     - certs:/certs:ro
+  #   command: ["python", "load_data.py"]
 
-  worker1:
-    build:
-      context: ../scripts
-    depends_on:
-      es01:
-        condition: service_healthy
-    environment:
-      ELASTIC_HOST: https://es01:9200
-      ELASTIC_USERNAME: elastic
-      ELASTIC_PASSWORD: changeme
-      TARGET_INDEX_PREFIX: audit-demo-8
-      VERIFY_CERTS: "true"
-      CA_CERT_PATH: /certs/ca/ca.crt
-      WORKER_ID: worker1
-      WORKER_OPS: 100
-    volumes:
-      - certs:/certs:ro
-    command: ["python", "query_worker.py"]
+  # worker1:
+  #   build:
+  #     context: ../scripts
+  #   depends_on:
+  #     es01:
+  #       condition: service_healthy
+  #   environment:
+  #     ELASTIC_HOST: https://es01:9200
+  #     ELASTIC_USERNAME: elastic
+  #     ELASTIC_PASSWORD: changeme
+  #     TARGET_INDEX_PREFIX: audit-demo-8
+  #     VERIFY_CERTS: "true"
+  #     CA_CERT_PATH: /certs/ca/ca.crt
+  #     WORKER_ID: worker1
+  #     WORKER_OPS: 100
+  #   volumes:
+  #     - certs:/certs:ro
+  #   command: ["python", "query_worker.py"]
 
-  worker2:
-    build:
-      context: ../scripts
-    depends_on:
-      es01:
-        condition: service_healthy
-    environment:
-      ELASTIC_HOST: https://es01:9200
-      ELASTIC_USERNAME: elastic
-      ELASTIC_PASSWORD: changeme
-      TARGET_INDEX_PREFIX: audit-demo-8
-      VERIFY_CERTS: "true"
-      CA_CERT_PATH: /certs/ca/ca.crt
-      WORKER_ID: worker2
-      WORKER_OPS: 100
-    volumes:
-      - certs:/certs:ro
-    command: ["python", "query_worker.py"]
+  # worker2:
+  #   build:
+  #     context: ../scripts
+  #   depends_on:
+  #     es01:
+  #       condition: service_healthy
+  #   environment:
+  #     ELASTIC_HOST: https://es01:9200
+  #     ELASTIC_USERNAME: elastic
+  #     ELASTIC_PASSWORD: changeme
+  #     TARGET_INDEX_PREFIX: audit-demo-8
+  #     VERIFY_CERTS: "true"
+  #     CA_CERT_PATH: /certs/ca/ca.crt
+  #     WORKER_ID: worker2
+  #     WORKER_OPS: 100
+  #   volumes:
+  #     - certs:/certs:ro
+  #   command: ["python", "query_worker.py"]
 
-  worker3:
-    build:
-      context: ../scripts
-    depends_on:
-      es01:
-        condition: service_healthy
-    environment:
-      ELASTIC_HOST: https://es01:9200
-      ELASTIC_USERNAME: elastic
-      ELASTIC_PASSWORD: changeme
-      TARGET_INDEX_PREFIX: audit-demo-8
-      VERIFY_CERTS: "true"
-      CA_CERT_PATH: /certs/ca/ca.crt
-      WORKER_ID: worker3
-      WORKER_OPS: 100
-    volumes:
-      - certs:/certs:ro
-    command: ["python", "query_worker.py"]
+  # worker3:
+  #   build:
+  #     context: ../scripts
+  #   depends_on:
+  #     es01:
+  #       condition: service_healthy
+  #   environment:
+  #     ELASTIC_HOST: https://es01:9200
+  #     ELASTIC_USERNAME: elastic
+  #     ELASTIC_PASSWORD: changeme
+  #     TARGET_INDEX_PREFIX: audit-demo-8
+  #     VERIFY_CERTS: "true"
+  #     CA_CERT_PATH: /certs/ca/ca.crt
+  #     WORKER_ID: worker3
+  #     WORKER_OPS: 100
+  #   volumes:
+  #     - certs:/certs:ro
+  #   command: ["python", "query_worker.py"]
 
   kibana:
-    image: docker.elastic.co/kibana/kibana:8.12.2
+    image: docker.elastic.co/kibana/kibana:8.19.9
     container_name: kibana8
     mem_limit: 512m
     environment:
