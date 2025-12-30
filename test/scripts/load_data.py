@@ -147,9 +147,14 @@ def bulk_ingest(
             logger.info("Indexed %s documents so far", total)
     logger.info("Ingestion finished; total items processed: %s", total)
 
-
 def main() -> None:
-    host = os.getenv("ELASTIC_HOST", "http://localhost:9200")
+    scheme = os.getenv("ELASTIC_SCHEME", "http")
+    host_name = os.getenv("ELASTIC_HOST", "localhost")
+    port = os.getenv("ELASTIC_PORT", "9200")
+
+    host = f"{scheme}://{host_name}:{port}"
+    # host = os.getenv("ELASTIC_HOST", "http://localhost:9200")
+
     username = os.getenv("ELASTIC_USERNAME", "elastic")
     password = os.getenv("ELASTIC_PASSWORD", "changeme")
     target_username = os.getenv("TARGET_USERNAME", "audit-elasticsearch")
@@ -177,7 +182,6 @@ def main() -> None:
     bulk_ingest(ingest_client, documents, indices, batch_size=bulk_chunk_size, request_timeout=bulk_request_timeout)
 
     logger.info("Data load complete for indices: %s", ", ".join(indices))
-
 
 if __name__ == "__main__":
     main()

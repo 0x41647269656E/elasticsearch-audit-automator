@@ -67,7 +67,6 @@ services:
       chown -R 1000:1000 config/certs && echo 'Certificates ready'
       "
 
-
   es01:
     <<: *es-common
     container_name: es01
@@ -155,7 +154,9 @@ services:
       volumes:
         - ../scripts/dummy_data.json:/app/dummy_data.json:ro
       environment:
-        ELASTIC_HOST: http://es01:9200
+        ELASTIC_SCHEME: http
+        ELASTIC_HOST: es01
+        ELASTIC_PORT: 9200
         ELASTIC_USERNAME: elastic
         ELASTIC_PASSWORD: changeme
         TARGET_USERNAME: audit-elasticsearch
