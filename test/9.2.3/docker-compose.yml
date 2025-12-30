@@ -15,7 +15,7 @@ x-elasticsearch-environment: &es-env
   ES_JAVA_OPTS: -Xms512m -Xmx512m
 
 x-elasticsearch-common: &es-common
-  image: docker.elastic.co/elasticsearch/elasticsearch:9.2.0
+  image: docker.elastic.co/elasticsearch/elasticsearch:9.2.3
   environment: *es-env
   ulimits:
     memlock:
@@ -32,12 +32,12 @@ x-elasticsearch-common: &es-common
 
 services:
   setup:
-    image: docker.elastic.co/elasticsearch/elasticsearch:9.2.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.2.3
     container_name: es9-setup
     user: "0"
     volumes:
       - certs:/usr/share/elasticsearch/config/certs
-      - ./instances.yml:/usr/share/elasticsearch/config/instances.yml:ro
+      - ../scripts/instances.yml:/usr/share/elasticsearch/config/instances.yml:ro
     command: >
       bash -c "
         set -e
@@ -127,104 +127,149 @@ services:
       - es9-es03-data:/usr/share/elasticsearch/data
       - certs:/usr/share/elasticsearch/config/certs
 
-  data-loader:
-    build:
-      context: ../scripts
-    depends_on:
-      es01:
-        condition: service_healthy
-      es02:
-        condition: service_healthy
-      es03:
-        condition: service_healthy
-    environment:
-      ELASTIC_HOST: https://es01:9200
-      ELASTIC_USERNAME: elastic
-      ELASTIC_PASSWORD: changeme
-      TARGET_USERNAME: audit-elasticsearch
-      TARGET_PASSWORD: audit-me
-      INDEX_COUNT: 10
-      TARGET_INDEX_PREFIX: audit-demo-9
-      VERIFY_CERTS: "true"
-      CA_CERT_PATH: /certs/ca/ca.crt
-      ELASTIC_CLIENT_APIVERSIONING: "true"
-      BULK_CHUNK_SIZE: 500
-      BULK_REQUEST_TIMEOUT: 120
-      SECURITY_ENABLED: "true"
-    volumes:
-      - certs:/certs:ro
-    command: ["python", "load_data.py"]
+  # data-loader:
+  #   build:
+  #     context: ../scripts
+  #   depends_on:
+  #     es01:
+  #       condition: service_healthy
+  #     es02:
+  #       condition: service_healthy
+  #     es03:
+  #       condition: service_healthy
+  #   environment:
+  #     ELASTIC_HOST: https://es01:9200
+  #     ELASTIC_USERNAME: elastic
+  #     ELASTIC_PASSWORD: changeme
+  #     TARGET_USERNAME: audit-elasticsearch
+  #     TARGET_PASSWORD: audit-me
+  #     INDEX_COUNT: 10
+  #     TARGET_INDEX_PREFIX: audit-demo-9
+  #     VERIFY_CERTS: "true"
+  #     CA_CERT_PATH: /certs/ca/ca.crt
+  #     ELASTIC_CLIENT_APIVERSIONING: "true"
+  #     BULK_CHUNK_SIZE: 500
+  #     BULK_REQUEST_TIMEOUT: 120
+  #     SECURITY_ENABLED: "true"
+  #   volumes:
+  #     - certs:/certs:ro
+  #   command: ["python", "load_data.py"]
 
-  worker1:
-    build:
-      context: ../scripts
-    depends_on:
-      es01:
-        condition: service_healthy
-    environment:
-      ELASTIC_HOST: https://es01:9200
-      ELASTIC_USERNAME: elastic
-      ELASTIC_PASSWORD: changeme
-      TARGET_INDEX_PREFIX: audit-demo-9
-      VERIFY_CERTS: "true"
-      CA_CERT_PATH: /certs/ca/ca.crt
-      WORKER_ID: worker1
-      WORKER_OPS: 100
-    volumes:
-      - certs:/certs:ro
-    command: ["python", "query_worker.py"]
+  # worker1:
+  #   build:
+  #     context: ../scripts
+  #   depends_on:
+  #     es01:
+  #       condition: service_healthy
+  #   environment:
+  #     ELASTIC_HOST: https://es01:9200
+  #     ELASTIC_USERNAME: elastic
+  #     ELASTIC_PASSWORD: changeme
+  #     TARGET_INDEX_PREFIX: audit-demo-9
+  #     VERIFY_CERTS: "true"
+  #     CA_CERT_PATH: /certs/ca/ca.crt
+  #     WORKER_ID: worker1
+  #     WORKER_OPS: 100
+  #   volumes:
+  #     - certs:/certs:ro
+  #   command: ["python", "query_worker.py"]
 
-  worker2:
-    build:
-      context: ../scripts
-    depends_on:
-      es01:
-        condition: service_healthy
-    environment:
-      ELASTIC_HOST: https://es01:9200
-      ELASTIC_USERNAME: elastic
-      ELASTIC_PASSWORD: changeme
-      TARGET_INDEX_PREFIX: audit-demo-9
-      VERIFY_CERTS: "true"
-      CA_CERT_PATH: /certs/ca/ca.crt
-      WORKER_ID: worker2
-      WORKER_OPS: 100
-    volumes:
-      - certs:/certs:ro
-    command: ["python", "query_worker.py"]
+  # worker2:
+  #   build:
+  #     context: ../scripts
+  #   depends_on:
+  #     es01:
+  #       condition: service_healthy
+  #   environment:
+  #     ELASTIC_HOST: https://es01:9200
+  #     ELASTIC_USERNAME: elastic
+  #     ELASTIC_PASSWORD: changeme
+  #     TARGET_INDEX_PREFIX: audit-demo-9
+  #     VERIFY_CERTS: "true"
+  #     CA_CERT_PATH: /certs/ca/ca.crt
+  #     WORKER_ID: worker2
+  #     WORKER_OPS: 100
+  #   volumes:
+  #     - certs:/certs:ro
+  #   command: ["python", "query_worker.py"]
 
-  worker3:
-    build:
-      context: ../scripts
+  # worker3:
+  #   build:
+  #     context: ../scripts
+  #   depends_on:
+  #     es01:
+  #       condition: service_healthy
+  #   environment:
+  #     ELASTIC_HOST: https://es01:9200
+  #     ELASTIC_USERNAME: elastic
+  #     ELASTIC_PASSWORD: changeme
+  #     TARGET_INDEX_PREFIX: audit-demo-9
+  #     VERIFY_CERTS: "true"
+  #     CA_CERT_PATH: /certs/ca/ca.crt
+  #     WORKER_ID: worker3
+  #     WORKER_OPS: 100
+  #   volumes:
+  #     - certs:/certs:ro
+  #   command: ["python", "query_worker.py"]
+
+  kibana-tokengen:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.2.3
+    container_name: kibana9-tokengen
     depends_on:
       es01:
         condition: service_healthy
     environment:
-      ELASTIC_HOST: https://es01:9200
-      ELASTIC_USERNAME: elastic
       ELASTIC_PASSWORD: changeme
-      TARGET_INDEX_PREFIX: audit-demo-9
-      VERIFY_CERTS: "true"
-      CA_CERT_PATH: /certs/ca/ca.crt
-      WORKER_ID: worker3
-      WORKER_OPS: 100
     volumes:
-      - certs:/certs:ro
-    command: ["python", "query_worker.py"]
+      - certs:/certs:rw
+    command: >
+      bash -c '
+        set -euo pipefail
+        TOKEN_FILE=/certs/kibana.service_token
+
+        if [ -s "$$TOKEN_FILE" ]; then
+          echo "Token already exists: $$TOKEN_FILE"
+          exit 0
+        fi
+
+        echo "Waiting for Elasticsearch..."
+        until curl -s -k --cacert /certs/ca/ca.crt -u elastic:$$ELASTIC_PASSWORD https://es9-es01:9200 >/dev/null; do
+          sleep 2
+        done
+
+        echo "Creating Kibana service token..."
+        RESP=$$(curl -s -k --cacert /certs/ca/ca.crt -u elastic:$$ELASTIC_PASSWORD \
+          -X POST https://es9-es01:9200/_security/service/elastic/kibana/credential/token/kibana-docker)
+
+        TOKEN=$$(printf "%s" "$$RESP" | sed -n '"'"'s/.*"value"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'"'"')
+
+        if [ -z "$$TOKEN" ]; then
+          echo "Failed to extract token. Response: $$RESP"
+          exit 1
+        fi
+
+        umask 077
+        printf "%s" "$$TOKEN" > "$$TOKEN_FILE"
+        echo "Saved token to $$TOKEN_FILE"
+      '
 
   kibana:
-    image: docker.elastic.co/kibana/kibana:9.2.0
+    image: docker.elastic.co/kibana/kibana:9.2.3
     container_name: kibana9
-    mem_limit: 512m
+    mem_limit: 1500m
     environment:
+      NODE_OPTIONS: --max-old-space-size=1024
       ELASTICSEARCH_HOSTS: https://es01:9200
-      ELASTICSEARCH_USERNAME: elastic
-      ELASTICSEARCH_PASSWORD: changeme
       ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES: /certs/ca/ca.crt
       SERVER_NAME: kibana9
       SERVER_HOST: 0.0.0.0
       SERVER_SSL_ENABLED: "false"
       XPACK_SECURITY_ENABLED: "true"
+    command: >
+      bash -c '
+        export ELASTICSEARCH_SERVICEACCOUNTTOKEN="$(cat /certs/kibana.service_token)"
+        exec /usr/local/bin/kibana-docker
+      '
     ports:
       - "5603:5601"
     depends_on:
@@ -234,8 +279,11 @@ services:
         condition: service_healthy
       es03:
         condition: service_healthy
+      kibana-tokengen:
+        condition: service_completed_successfully
     volumes:
       - certs:/certs:ro
+
 
 volumes:
   certs:

@@ -39,7 +39,7 @@ services:
     user: "0"
     volumes:
       - certs:/usr/share/elasticsearch/config/certs
-      - ./instances.yml:/usr/share/elasticsearch/config/instances.yml:ro
+      - ../scripts/instances.yml:/usr/share/elasticsearch/config/instances.yml:ro
     command: >
       bash -c "
         set -e
@@ -248,7 +248,6 @@ services:
         printf "%s" "$$TOKEN" > "$$TOKEN_FILE"
         echo "Saved token to $$TOKEN_FILE"
       '
-
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.19.9

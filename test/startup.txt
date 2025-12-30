@@ -1,0 +1,8 @@
+docker compose -p es7 -f .\7.17.29\docker-compose.yml up -d
+docker compose -p es8 -f .\8.19.9\docker-compose.yml up -d
+docker compose -p es9 -f .\9.2.3\docker-compose.yml up -d
+
+
+docker compose -p es7 -f .\7.17.29\docker-compose.yml down -v
+docker compose -p es8 -f .\8.19.9\docker-compose.yml down -v
+docker compose -p es9 -f .\9.2.3\docker-compose.yml down -v
