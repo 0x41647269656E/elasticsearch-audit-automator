@@ -149,7 +149,7 @@ services:
         TARGET_USERNAME: audit-elasticsearch
         TARGET_PASSWORD: audit-me
         INDEX_COUNT: 10
-        TARGET_INDEX_PREFIX: audit-demo-8.19
+        TARGET_INDEX_PREFIX: audit-demo-8.19.9
         ELASTIC_CLIENT_APIVERSIONING: "true"
         BULK_CHUNK_SIZE: 500
         BULK_REQUEST_TIMEOUT: 120
