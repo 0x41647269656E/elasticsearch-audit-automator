@@ -15,7 +15,7 @@ Un outil en Python pour automatiser l’audit de clusters Elasticsearch via HTTP
 ## Installation
 ```bash
 python -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate (ou .venv\Scripts\Activate.ps1 sur powershell)
 pip install -r requirements.txt  # voir dépendances ci-dessous si vous préférez installer manuellement
 ```
 
