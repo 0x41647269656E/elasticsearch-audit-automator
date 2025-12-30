@@ -17,7 +17,7 @@ x-elasticsearch-environment: &es-env
   transport.port: 9300
 
 x-elasticsearch-common: &es-common
-  image: docker.elastic.co/elasticsearch/elasticsearch:8.18.8
+  image: docker.elastic.co/elasticsearch/elasticsearch:8.19.9
   environment: *es-env
   ulimits:
     memlock:
@@ -34,7 +34,7 @@ x-elasticsearch-common: &es-common
 
 services:
   setup:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.18.8
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.9
     container_name: es8-setup
     user: "0"
     volumes:
@@ -209,7 +209,7 @@ services:
   #   command: ["python", "query_worker.py"]
 
   kibana-tokengen:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.18.8
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.9
     container_name: kibana8-tokengen
     depends_on:
       es01:
@@ -251,7 +251,7 @@ services:
 
 
   kibana:
-    image: docker.elastic.co/kibana/kibana:8.18.8
+    image: docker.elastic.co/kibana/kibana:8.19.9
     container_name: kibana8
     mem_limit: 1500m
     environment:
