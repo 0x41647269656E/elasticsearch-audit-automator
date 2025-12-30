@@ -128,11 +128,7 @@ def bulk_ingest(
         return
 
     total = 0
-
-    bulk_client = client.options(
-        request_timeout=request_timeout,
-        refresh="wait_for"
-    )
+    bulk_client = client.options(request_timeout=request_timeout)
 
     for ok, result in helpers.streaming_bulk(
         bulk_client,
