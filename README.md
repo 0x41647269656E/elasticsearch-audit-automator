@@ -105,7 +105,7 @@ docker compose -f test/7.17/docker-compose.yml logs -f data-loader
 Paramètres clés :
 - Accès HTTP : `http://localhost:9200`
 - Superuser initial : `elastic` / `changeme`
-- Utilisateur d’audit : `audit-elasticsearch` / `audit-me` (créé automatiquement)
+- Utilisateur d’audit : `audit-elasticsearch` / `audit-me` (créé automatiquement par le `data-loader`)
 - Indices générés automatiquement : `audit-demo-7-01` à `audit-demo-7-10`
 - Jeux de données : documents factices inclus dans `test/scripts/dummy_data.json` et copiés dans l’image `data-loader`
 - Kibana : http://localhost:5601 (authentification `elastic`/`changeme` ou `audit-elasticsearch`/`audit-me`)
@@ -125,7 +125,7 @@ Paramètres clés :
 - Accès HTTPS : `https://localhost:9300`
 - AC et certificats : générés via le conteneur `setup` avec `elasticsearch-certutil` et `test/8/instances.yml`, stockés dans le volume `certs` (`/usr/share/elasticsearch/config/certs/...`, AC consommable dans les conteneurs auxiliaires via `/certs/ca/ca.crt`)
 - Superuser initial : `elastic` / `changeme`
-- Utilisateur d’audit : `audit-elasticsearch` / `audit-me`
+- Utilisateur d’audit : `audit-elasticsearch` / `audit-me` (créé automatiquement par le `data-loader`)
 - Indices générés automatiquement : `audit-demo-8-01` à `audit-demo-8-10`
 - Kibana : https://localhost:5602 (certificat AC disponible dans le volume `certs`, par exemple `/certs/ca/ca.crt`, authentification `elastic`/`changeme` ou `audit-elasticsearch`/`audit-me`)
 
@@ -144,7 +144,7 @@ Paramètres clés :
 - Accès HTTPS : `https://localhost:9400`
 - AC et certificats : générés via le conteneur `setup` avec `elasticsearch-certutil` et `test/9/instances.yml`, stockés dans le volume `certs` (`/usr/share/elasticsearch/config/certs/...`, AC consommable dans les conteneurs auxiliaires via `/certs/ca/ca.crt`)
 - Superuser initial : `elastic` / `changeme`
-- Utilisateur d’audit : `audit-elasticsearch` / `audit-me`
+- Utilisateur d’audit : `audit-elasticsearch` / `audit-me` (créé automatiquement par le `data-loader`)
 - Indices générés automatiquement : `audit-demo-9-01` à `audit-demo-9-10`
 - Kibana : https://localhost:5603 (certificat AC disponible dans le volume `certs`, par exemple `/certs/ca/ca.crt`, authentification `elastic`/`changeme` ou `audit-elasticsearch`/`audit-me`)
 
