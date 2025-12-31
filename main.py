@@ -130,7 +130,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--password", help="Elasticsearch password")
     parser.add_argument("--token", help="Elasticsearch bearer token")
     parser.add_argument("--client-name", help="Client name for audit folder")
-    parser.add_argument("--cluster-name", help="Cluster name override")
     parser.add_argument("--verify-tls", choices=["true", "false"], help="Verify TLS certificates")
     parser.add_argument("--ssh-host", help="SSH jump host")
     parser.add_argument("--ssh-port", type=int, default=None, help="SSH port")
@@ -156,7 +155,6 @@ def load_configuration(args: argparse.Namespace) -> Dict[str, Any]:
         "password": args.password or os.getenv("ELASTIC_PASSWORD"),
         "token": args.token or os.getenv("ELASTIC_BEARER_TOKEN"),
         "client_name": args.client_name or os.getenv("CLIENT_NAME", "client"),
-        "cluster_name": args.cluster_name or os.getenv("CLUSTER_NAME"),
         "verify_tls": env_bool(args.verify_tls or os.getenv("VERIFY_TLS", "true")),
         "ssh_host": args.ssh_host or os.getenv("SSH_HOST"),
         "ssh_port": args.ssh_port or int(os.getenv("SSH_PORT", "22")),
@@ -332,15 +330,34 @@ def persist_tls_report(
     return str(report_path)
 
 
-def collect_cluster_details(session: requests.Session, base_url: str, verify_tls: bool) -> Dict[str, Any]:
-    details: Dict[str, Any] = {}
+def detect_cluster_name(session: requests.Session, base_url: str, verify_tls: bool) -> str:
+    """Retrieve the Elasticsearch cluster name from the health endpoint with a root fallback."""
+    health_error: Optional[Exception] = None
     try:
         health = execute_request(session, "GET", f"{base_url}/_cluster/health", verify_tls)
         if health.ok:
             payload = health.json()
-            details["cluster_name"] = payload.get("cluster_name")
-    except Exception:
-        details["cluster_name"] = None
+            cluster_name = payload.get("cluster_name")
+            if cluster_name:
+                return str(cluster_name)
+    except Exception as exc:
+        health_error = exc
+
+    try:
+        root = execute_request(session, "GET", f"{base_url}/", verify_tls)
+        if root.ok:
+            payload = root.json()
+            cluster_name = payload.get("cluster_name")
+            if cluster_name:
+                return str(cluster_name)
+    except Exception as exc:
+        health_error = health_error or exc
+
+    raise RuntimeError("Unable to determine Elasticsearch cluster name") from health_error
+
+
+def collect_cluster_details(session: requests.Session, base_url: str, verify_tls: bool) -> Dict[str, Any]:
+    details: Dict[str, Any] = {}
 
     try:
         nodes_info = execute_request(session, "GET", f"{base_url}/_nodes", verify_tls)
@@ -442,8 +459,9 @@ def main() -> None:
             remote_port=config["port"],
         ) as tunnel:
             local_base_url = build_base_url(config, tunnel.local_port)
+            cluster_name = detect_cluster_name(session, local_base_url, config["verify_tls"])
+            print(f"Detected cluster name: {cluster_name}")
             node_details = collect_cluster_details(session, local_base_url, config["verify_tls"])
-            cluster_name = config.get("cluster_name") or node_details.get("cluster_name") or config["host"]
             audit_dir = create_audit_dir(data_dir, config["client_name"], cluster_name, config["host"])
             tls_report = persist_tls_report(audit_dir, config, local_port=tunnel.local_port)
             results = run_commands(
@@ -465,8 +483,9 @@ def main() -> None:
             )
             prompt_analysis(audit_dir)
     else:
+        cluster_name = detect_cluster_name(session, base_url, config["verify_tls"])
+        print(f"Detected cluster name: {cluster_name}")
         node_details = collect_cluster_details(session, base_url, config["verify_tls"])
-        cluster_name = config.get("cluster_name") or node_details.get("cluster_name") or config["host"]
         audit_dir = create_audit_dir(data_dir, config["client_name"], cluster_name, config["host"])
         tls_report = persist_tls_report(audit_dir, config)
         results = run_commands(
