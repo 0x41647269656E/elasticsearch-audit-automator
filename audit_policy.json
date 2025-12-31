@@ -7,18 +7,14 @@
       "read_slm",
       "read_security",
       "monitor_snapshot",
-      "manage_index_templates",
-      "manage_pipeline",
-      "manage_enrich",
-      "manage_api_key"
+      "read_pipeline",
+      "monitor_enrich",
+      "manage_index_templates"
     ],
     "indices": [
       {
         "names": ["*"],
-        "privileges": [
-          "monitor",
-          "view_index_metadata"
-        ]
+        "privileges": ["monitor", "view_index_metadata"]
       }
     ]
   }
