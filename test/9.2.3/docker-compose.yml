@@ -135,6 +135,7 @@ services:
           condition: service_healthy
       volumes:
         - ../scripts/dummy_data.json:/app/dummy_data.json:ro
+        - ../../audit_policy.json:/app/audit_policy.json:ro
         - ./certs/ca/:/app/ca/:ro
       environment:
         ELASTIC_SCHEME: https
