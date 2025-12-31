@@ -38,10 +38,29 @@ def wait_for_green(client: Elasticsearch, timeout: int = 600) -> None:
         time.sleep(10)
 
 
-def ensure_user(client: Elasticsearch, username: str, password: str) -> None:
+def ensure_user(
+    client: Elasticsearch,
+    username: str,
+    password: str,
+    role_name: str,
+) -> None:
     try:
-        client.security.get_user(username=username)
-        logger.info("User %s already exists", username)
+        existing = client.security.get_user(username=username)
+        user_info = existing.get(username, {})
+        roles = set(user_info.get("roles", []))
+        if role_name in roles:
+            logger.info("User %s already exists with role %s", username, role_name)
+            return
+        logger.info("User %s exists; updating roles", username)
+        updated_roles = sorted(roles | {role_name})
+        client.security.put_user(
+            username=username,
+            body={
+                "roles": updated_roles,
+                "full_name": user_info.get("full_name", "Audit automation"),
+                "email": user_info.get("email", "audit@example.com"),
+            },
+        )
         return
     except Exception:  # noqa: BLE001
         logger.info("Creating user %s", username)
@@ -49,11 +68,24 @@ def ensure_user(client: Elasticsearch, username: str, password: str) -> None:
         username=username,
         body={
             "password": password,
-            "roles": ["superuser"],
+            "roles": [role_name],
             "full_name": "Audit automation",
             "email": "audit@example.com",
         },
     )
+
+
+def ensure_role(client: Elasticsearch, role_name: str, role_body: dict) -> None:
+    client.security.put_role(name=role_name, body=role_body)
+    logger.info("Ensured role %s exists", role_name)
+
+
+def load_audit_policy(path: str) -> dict:
+    with open(path, "r", encoding="utf-8") as file:
+        policy = json.load(file)
+    if "role_name" not in policy or "role" not in policy:
+        raise ValueError("Audit policy must include role_name and role fields")
+    return policy
 
 
 def create_indices(client: Elasticsearch, index_prefix: str, count: int) -> List[str]:
@@ -167,12 +199,17 @@ def main() -> None:
     bulk_chunk_size = int(os.getenv("BULK_CHUNK_SIZE", "500"))
     bulk_request_timeout = int(os.getenv("BULK_REQUEST_TIMEOUT", "120"))
     data_file = os.getenv("DATA_FILE", "/app/dummy_data.json")
+    audit_policy_path = os.getenv("AUDIT_POLICY_PATH", "/app/audit_policy.json")
 
     admin_client = build_client(host, username if security_enabled else "", password if security_enabled else "", verify_certs, ca_cert)
     wait_for_green(admin_client)
 
     if security_enabled:
-        ensure_user(admin_client, target_username, target_password)
+        audit_policy = load_audit_policy(audit_policy_path)
+        role_name = audit_policy["role_name"]
+        role_body = audit_policy["role"]
+        ensure_role(admin_client, role_name, role_body)
+        ensure_user(admin_client, target_username, target_password, role_name)
         ingest_client = build_client(host, target_username, target_password, verify_certs, ca_cert)
     else:
         ingest_client = admin_client

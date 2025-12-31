@@ -153,6 +153,7 @@ services:
           condition: service_healthy
       volumes:
         - ../scripts/dummy_data.json:/app/dummy_data.json:ro
+        - ../../audit_policy.json:/app/audit_policy.json:ro
       environment:
         ELASTIC_SCHEME: http
         ELASTIC_HOST: es01
