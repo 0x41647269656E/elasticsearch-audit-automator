@@ -366,6 +366,8 @@ def persist_tls_report(
 
 
 def resolve_verify_setting(config: Dict[str, Any]) -> bool | str:
+    if config.get("scheme") != "https":
+        return False
     if not config.get("verify_tls", True):
         return False
     if config.get("ca_cert"):
