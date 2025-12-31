@@ -9,6 +9,40 @@ from elasticsearch import Elasticsearch, helpers
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
+def get_major_version(client: Elasticsearch) -> int:
+    info = client.info()
+    version_str = info.get("version", {}).get("number", "0.0.0")
+    major_str = version_str.split(".", 1)[0]
+    try:
+        return int(major_str)
+    except ValueError:
+        return 0
+
+
+def select_audit_policy_path(client: Elasticsearch) -> str:
+    """
+    Select the appropriate audit policy file based on Elasticsearch major version.
+    - ES 7.x  -> AUDIT_POLICY_PATH_7 
+    - ES 8.x+ -> AUDIT_POLICY_PATH_8
+
+    If AUDIT_POLICY env variable is defined, it override.
+    """
+
+    # Manual override has absolute priority
+    override = os.getenv("AUDIT_POLICY")
+    if override:
+        return override
+    
+    # Auto-detect cluster version
+    info = client.info()
+    version = info.get("version", {}).get("number", "0.0.0")
+    major = int(version.split(".", 1)[0])
+
+    if major >= 8:
+        return "/app/audit_policy_8.json"
+
+    return "/app/audit_policy_7.json"
+
 
 def build_client(host: str, username: str, password: str, verify: bool, ca_cert: str | None) -> Elasticsearch:
     kwargs = {
@@ -205,9 +239,17 @@ def main() -> None:
     wait_for_green(admin_client)
 
     if security_enabled:
-        audit_policy = load_audit_policy(audit_policy_path)
+        major = get_major_version(admin_client)
+        logger.info("Detected Elasticsearch major version: %s", major)
+
+        policy_path  = select_audit_policy_path(major)
+        logger.info("Using audit policy file: %s", policy_path)
+
+        audit_policy = load_audit_policy(policy_path)
         role_name = audit_policy["role_name"]
         role_body = audit_policy["role"]
+        logger.info("Audit policy file loaded with role_name: %s", role_name)
+
         ensure_role(admin_client, role_name, role_body)
         ensure_user(admin_client, target_username, target_password, role_name)
         ingest_client = build_client(host, target_username, target_password, verify_certs, ca_cert)

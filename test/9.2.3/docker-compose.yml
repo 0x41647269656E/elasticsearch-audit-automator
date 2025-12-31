@@ -151,6 +151,7 @@ services:
         INDEX_COUNT: 10
         TARGET_INDEX_PREFIX: audit-demo-9.2.3
         ELASTIC_CLIENT_APIVERSIONING: "true"
+        # AUDIT_POLICY_PATH: /app/audit_policy_8.json
         BULK_CHUNK_SIZE: 500
         BULK_REQUEST_TIMEOUT: 120
       command: ["python", "load_data.py"]

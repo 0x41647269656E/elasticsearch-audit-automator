@@ -169,6 +169,7 @@ services:
         BULK_CHUNK_SIZE: 500
         BULK_REQUEST_TIMEOUT: 120
         SECURITY_ENABLED: "true"
+        # AUDIT_POLICY_PATH: /app/audit_policy_7.json
       command: ["python", "load_data.py"]
 
   worker1:
