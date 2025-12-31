@@ -90,6 +90,14 @@ Chaque audit crée un dossier `data/YYYY-MM-DD_HH-mm-ss-<client>-<cluster>` cont
 - Trois workers légers `worker1/2/3` génèrent des recherches et des écritures synthétiques basées sur `dummy_data.json` pour stimuler le cluster après le chargement initial.
 - Les certificats TLS nécessaires au transport chiffré sont générés automatiquement par un conteneur `setup` et stockés dans le volume `certs` de chaque stack ; supprimez le volume pour forcer une régénération.
 
+### Erreurs habituelles au démarrage des stacks de test
+- **Exit code 137 / OOM Killer** : la mémoire allouée est insuffisante. Réduisez `ES_JAVA_OPTS` dans les fichiers `test/*/docker-compose.yml`, baissez la mémoire limite des conteneurs ou lancez une seule stack à la fois.
+- **`max virtual memory areas vm.max_map_count [65530] is too low`** : le kernel impose un seuil insuffisant. Sur l’hôte, exécutez `sudo sysctl -w vm.max_map_count=262144` (ou ajoutez-le à `/etc/sysctl.conf`).
+- **Échec TLS / certificats manquants** : le conteneur `setup` n’a pas terminé ou le volume `certs` est corrompu. Supprimez le volume `certs` et relancez la stack pour régénérer les certificats.
+- **Conflit de ports (9200/9300/9400, 5601/5602/5603)** : un service écoute déjà sur ces ports. Arrêtez le service existant ou modifiez les ports dans le `docker-compose.yml` ciblé.
+- **`data-loader` bloqué sur `waiting for green`** : le cluster n’est pas prêt (nœuds en attente, allocation lente). Vérifiez les logs Elasticsearch et assurez-vous que tous les nœuds démarrent correctement.
+- **Permissions refusées sur le volume de données** : les volumes Docker existants peuvent contenir des droits incompatibles. Supprimez les volumes concernés (`docker volume rm ...`) puis relancez la stack.
+
 ### Cluster Elasticsearch 7.17 (HTTP, auth basique, transport chiffré)
 Un jeu de conteneurs Docker permet de démarrer trois nœuds 7.17.29 sans TLS côté HTTP mais avec sécurité activée. Le transport inter-nœuds est chiffré via des certificats générés automatiquement par le conteneur `setup` dans le volume `certs`, ce qui satisfait les bootstrap checks tout en conservant des appels HTTP simples pour les clients.
 
