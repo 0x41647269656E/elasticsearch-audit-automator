@@ -136,6 +136,7 @@ def parse_args() -> argparse.Namespace:
         help="Cluster typology (PRODUCTION, PREPROD, RECETTE, DEV, AUTRE)",
     )
     parser.add_argument("--verify-tls", choices=["true", "false"], help="Verify TLS certificates")
+    parser.add_argument("--ca-cert", help="Path to CA certificate (.crt) for TLS validation")
     parser.add_argument("--ssh-host", help="SSH jump host")
     parser.add_argument("--ssh-port", type=int, default=None, help="SSH port")
     parser.add_argument("--ssh-username", help="SSH username")
@@ -174,6 +175,7 @@ def load_configuration(args: argparse.Namespace) -> Dict[str, Any]:
             args.cluster_typology or os.getenv("CLUSTER_TYPOLOGY")
         ),
         "verify_tls": env_bool(args.verify_tls or os.getenv("VERIFY_TLS", "true")),
+        "ca_cert": args.ca_cert or os.getenv("CA_CERT_PATH"),
         "ssh_host": args.ssh_host or os.getenv("SSH_HOST"),
         "ssh_port": args.ssh_port or int(os.getenv("SSH_PORT", "22")),
         "ssh_username": args.ssh_username or os.getenv("SSH_USERNAME"),
@@ -225,7 +227,7 @@ def create_audit_dir(base_dir: Path, client: str, cluster: str, host: str) -> Pa
     return audit_dir
 
 
-def execute_request(session: requests.Session, method: str, url: str, verify: bool) -> requests.Response:
+def execute_request(session: requests.Session, method: str, url: str, verify: bool | str) -> requests.Response:
     method = method.upper()
     response = session.request(method, url, verify=verify)
     return response
@@ -245,7 +247,7 @@ def run_commands(
     session: requests.Session,
     base_url: str,
     commands: List[Dict[str, Any]],
-    verify_tls: bool,
+    verify_tls: bool | str,
     audit_dir: Path,
 ) -> Dict[str, List[str]]:
     executed: List[str] = []
@@ -309,10 +311,19 @@ def decode_certificate(der_bytes: bytes) -> Dict[str, Any]:
     }
 
 
-def fetch_tls_chain(host: str, port: int, server_hostname: str, verify: bool) -> Dict[str, Any]:
+def fetch_tls_chain(
+    host: str,
+    port: int,
+    server_hostname: str,
+    verify: bool,
+    ca_cert: Optional[str] = None,
+) -> Dict[str, Any]:
     """Retrieve TLS chain information from a remote HTTPS endpoint."""
     ctx = ssl.create_default_context()
-    if not verify:
+    if verify:
+        if ca_cert:
+            ctx.load_verify_locations(cafile=ca_cert)
+    else:
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
 
@@ -341,14 +352,28 @@ def persist_tls_report(
         return None
     connect_host = "127.0.0.1" if local_port else config["host"]
     connect_port = local_port or config["port"]
-    tls_info = fetch_tls_chain(connect_host, connect_port, server_hostname=config["host"], verify=config["verify_tls"])
+    tls_info = fetch_tls_chain(
+        connect_host,
+        connect_port,
+        server_hostname=config["host"],
+        verify=config["verify_tls"],
+        ca_cert=config.get("ca_cert"),
+    )
     report_path = audit_dir / "tls_report.json"
     with open(report_path, "w", encoding="utf-8") as file:
         json.dump(tls_info, file, indent=2)
     return str(report_path)
 
 
-def detect_cluster_name(session: requests.Session, base_url: str, verify_tls: bool) -> str:
+def resolve_verify_setting(config: Dict[str, Any]) -> bool | str:
+    if not config.get("verify_tls", True):
+        return False
+    if config.get("ca_cert"):
+        return config["ca_cert"]
+    return True
+
+
+def detect_cluster_name(session: requests.Session, base_url: str, verify_tls: bool | str) -> str:
     """Retrieve the Elasticsearch cluster name from the health endpoint with a root fallback."""
     health_error: Optional[Exception] = None
     try:
@@ -374,7 +399,7 @@ def detect_cluster_name(session: requests.Session, base_url: str, verify_tls: bo
     raise RuntimeError("Unable to determine Elasticsearch cluster name") from health_error
 
 
-def collect_cluster_details(session: requests.Session, base_url: str, verify_tls: bool) -> Dict[str, Any]:
+def collect_cluster_details(session: requests.Session, base_url: str, verify_tls: bool | str) -> Dict[str, Any]:
     details: Dict[str, Any] = {}
 
     try:
@@ -465,6 +490,7 @@ def main() -> None:
     session = build_session(config)
     connection_method = "ssh" if config.get("ssh_host") else config["scheme"]
     base_url = build_base_url(config)
+    verify_setting = resolve_verify_setting(config)
 
     if config.get("ssh_host"):
         if not config.get("ssh_username"):
@@ -479,16 +505,16 @@ def main() -> None:
             remote_port=config["port"],
         ) as tunnel:
             local_base_url = build_base_url(config, tunnel.local_port)
-            cluster_name = detect_cluster_name(session, local_base_url, config["verify_tls"])
+            cluster_name = detect_cluster_name(session, local_base_url, verify_setting)
             print(f"Detected cluster name: {cluster_name}")
-            node_details = collect_cluster_details(session, local_base_url, config["verify_tls"])
+            node_details = collect_cluster_details(session, local_base_url, verify_setting)
             audit_dir = create_audit_dir(data_dir, config["client_name"], cluster_name, config["host"])
             tls_report = persist_tls_report(audit_dir, config, local_port=tunnel.local_port)
             results = run_commands(
                 session,
                 local_base_url,
                 commands_meta.get("commands", []),
-                config["verify_tls"],
+                verify_setting,
                 audit_dir,
             )
             write_audit_info(
@@ -504,16 +530,16 @@ def main() -> None:
             )
             prompt_analysis(audit_dir)
     else:
-        cluster_name = detect_cluster_name(session, base_url, config["verify_tls"])
+        cluster_name = detect_cluster_name(session, base_url, verify_setting)
         print(f"Detected cluster name: {cluster_name}")
-        node_details = collect_cluster_details(session, base_url, config["verify_tls"])
+        node_details = collect_cluster_details(session, base_url, verify_setting)
         audit_dir = create_audit_dir(data_dir, config["client_name"], cluster_name, config["host"])
         tls_report = persist_tls_report(audit_dir, config)
         results = run_commands(
             session,
             base_url,
             commands_meta.get("commands", []),
-            config["verify_tls"],
+            verify_setting,
             audit_dir,
         )
         write_audit_info(
