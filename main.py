@@ -130,6 +130,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--password", help="Elasticsearch password")
     parser.add_argument("--token", help="Elasticsearch bearer token")
     parser.add_argument("--client-name", help="Client name for audit folder")
+    parser.add_argument(
+        "--cluster-typology",
+        choices=["PRODUCTION", "PREPROD", "RECETTE", "DEV", "AUTRE"],
+        help="Cluster typology (PRODUCTION, PREPROD, RECETTE, DEV, AUTRE)",
+    )
     parser.add_argument("--verify-tls", choices=["true", "false"], help="Verify TLS certificates")
     parser.add_argument("--ssh-host", help="SSH jump host")
     parser.add_argument("--ssh-port", type=int, default=None, help="SSH port")
@@ -145,6 +150,16 @@ def env_bool(value: Optional[str], default: bool = True) -> bool:
     return str(value).lower() in {"1", "true", "yes", "y"}
 
 
+def normalize_cluster_typology(value: Optional[str]) -> str:
+    allowed = {"PRODUCTION", "PREPROD", "RECETTE", "DEV", "AUTRE"}
+    if not value:
+        return "AUTRE"
+    normalized = value.strip().upper()
+    if normalized not in allowed:
+        raise ValueError(f"Unsupported cluster typology: {value}")
+    return normalized
+
+
 def load_configuration(args: argparse.Namespace) -> Dict[str, Any]:
     load_dotenv()
     config = {
@@ -155,6 +170,9 @@ def load_configuration(args: argparse.Namespace) -> Dict[str, Any]:
         "password": args.password or os.getenv("ELASTIC_PASSWORD"),
         "token": args.token or os.getenv("ELASTIC_BEARER_TOKEN"),
         "client_name": args.client_name or os.getenv("CLIENT_NAME", "client"),
+        "cluster_typology": normalize_cluster_typology(
+            args.cluster_typology or os.getenv("CLUSTER_TYPOLOGY")
+        ),
         "verify_tls": env_bool(args.verify_tls or os.getenv("VERIFY_TLS", "true")),
         "ssh_host": args.ssh_host or os.getenv("SSH_HOST"),
         "ssh_port": args.ssh_port or int(os.getenv("SSH_PORT", "22")),
@@ -400,6 +418,7 @@ def write_audit_info(
     connection_method: str,
     client_name: str,
     cluster_name: str,
+    cluster_typology: str,
     commands_meta: Dict[str, Any],
     command_results: Dict[str, List[str]],
     node_details: Dict[str, Any],
@@ -409,6 +428,7 @@ def write_audit_info(
         "connection_method": connection_method,
         "timestamp": datetime.datetime.utcnow().isoformat(),
         "cluster_name": cluster_name,
+        "cluster_typology": cluster_typology,
         "client_name": client_name,
         "commands_version": commands_meta.get("version"),
         "commands_executed": command_results["executed"],
@@ -476,6 +496,7 @@ def main() -> None:
                 "SSH",
                 config["client_name"],
                 cluster_name,
+                config["cluster_typology"],
                 commands_meta,
                 results,
                 node_details,
@@ -500,6 +521,7 @@ def main() -> None:
             config["scheme"].upper(),
             config["client_name"],
             cluster_name,
+            config["cluster_typology"],
             commands_meta,
             results,
             node_details,
