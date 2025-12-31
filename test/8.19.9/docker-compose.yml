@@ -136,14 +136,14 @@ services:
           condition: service_healthy
       volumes:
         - ../scripts/dummy_data.json:/app/dummy_data.json:ro
-        - ./certs/ca/ca.crt:/app/ca.crt:ro
+        - ./certs/ca/:/app/ca/:ro
       environment:
         ELASTIC_SCHEME: https
         ELASTIC_HOST: es01
         ELASTIC_PORT: 9200
         SECURITY_ENABLED: "true"
         VERIFY_CERTS: "true"
-        CA_CERT_PATH: "/app/ca.crt"
+        CA_CERT_PATH: "/app/ca/ca.crt"
         ELASTIC_USERNAME: elastic
         ELASTIC_PASSWORD: changeme
         TARGET_USERNAME: audit-elasticsearch
