@@ -31,11 +31,14 @@ cp .env.example .env
 ```
 
 Variables principales :
-- `ELASTIC_HOST` / `ELASTIC_PORT` / `ELASTIC_SCHEME` : cible Elasticsearch.
+- `ELASTIC_HOST` / `ELASTIC_PORT` / `ELASTIC_SCHEME` : cible Elasticsearch (défauts : `localhost` / `9200` / `http`).
 - `ELASTIC_USERNAME` / `ELASTIC_PASSWORD` ou `ELASTIC_BEARER_TOKEN` : authentification.
-- `VERIFY_TLS` : `true`/`false` pour la validation TLS.
-- `CLIENT_NAME` / `CLUSTER_NAME` : noms utilisés dans les dossiers d’audit.
+- `VERIFY_TLS` : `true`/`false` pour la validation TLS (défaut : `true`).
+- `CLIENT_NAME` : nom utilisé dans les dossiers d’audit (défaut : `client`).
+- `CLUSTER_TYPOLOGY` : typologie de cluster (`PRODUCTION`, `PREPROD`, `RECETTE`, `DEV`, `AUTRE`, défaut : `AUTRE`).
 - `SSH_HOST`, `SSH_PORT`, `SSH_USERNAME`, `SSH_KEY_PATH`, `SSH_PASSWORD` : remplissez si vous passez par un rebond SSH.
+
+Le nom de cluster est détecté automatiquement via l’API `_cluster/health` et utilisé dans le nom du dossier d’audit.
 
 Les arguments CLI surchargent les valeurs du fichier `.env`.
 
@@ -87,7 +90,7 @@ Chaque audit crée un dossier `data/YYYY-MM-DD_HH-mm-ss-<client>-<cluster>` cont
 - Si votre environnement est plus contraint et que vous voyez des arrêts de conteneur avec `137` (OOM), réduisez encore le heap via la variable `ES_JAVA_OPTS` dans les fichiers `docker-compose.yml`.
 - Si le service `data-loader` atteint un timeout réseau, baissez la taille des lots (`BULK_CHUNK_SIZE`) ou augmentez le timeout (`BULK_REQUEST_TIMEOUT`) dans les variables d’environnement du service.
 - Le `data-loader` utilise désormais un fichier JSON local (`test/scripts/dummy_data.json`) copié dans son image pour éviter les téléchargements réseau pendant l’ingestion.
-- Trois workers légers `worker1/2/3` génèrent des recherches et des écritures synthétiques basées sur `dummy_data.json` pour stimuler le cluster après le chargement initial.
+- Un worker léger (`worker1`) génère des recherches et des écritures synthétiques basées sur `dummy_data.json` pour stimuler le cluster après le chargement initial (les workers 2/3 sont commentés dans les stacks 8/9).
 - Les certificats TLS nécessaires au transport chiffré sont générés automatiquement par un conteneur `setup` et stockés dans le volume `certs` de chaque stack ; supprimez le volume pour forcer une régénération.
 
 ### Erreurs habituelles au démarrage des stacks de test
@@ -98,63 +101,65 @@ Chaque audit crée un dossier `data/YYYY-MM-DD_HH-mm-ss-<client>-<cluster>` cont
 - **`data-loader` bloqué sur `waiting for green`** : le cluster n’est pas prêt (nœuds en attente, allocation lente). Vérifiez les logs Elasticsearch et assurez-vous que tous les nœuds démarrent correctement.
 - **Permissions refusées sur le volume de données** : les volumes Docker existants peuvent contenir des droits incompatibles. Supprimez les volumes concernés (`docker volume rm ...`) puis relancez la stack.
 
-### Cluster Elasticsearch 7.17 (HTTP, auth basique, transport chiffré)
+### Cluster Elasticsearch 7.17.29 (HTTP, auth basique, transport chiffré)
 Un jeu de conteneurs Docker permet de démarrer trois nœuds 7.17.29 sans TLS côté HTTP mais avec sécurité activée. Le transport inter-nœuds est chiffré via des certificats générés automatiquement par le conteneur `setup` dans le volume `certs`, ce qui satisfait les bootstrap checks tout en conservant des appels HTTP simples pour les clients.
 
 Chaque nœud Elasticsearch est limité à 512 Mo de heap (`ES_JAVA_OPTS`) et à 1 Go de mémoire conteneur, et Kibana est limité à 512 Mo.
 
 Commandes :
 ```bash
-docker compose -f test/7.17/docker-compose.yml up -d
+docker compose -f test/7.17.29/docker-compose.yml up -d
 # Surveillez les logs si besoin
-docker compose -f test/7.17/docker-compose.yml logs -f data-loader
+docker compose -f test/7.17.29/docker-compose.yml logs -f data-loader
 ```
 
 Paramètres clés :
-- Accès HTTP : `http://localhost:9200`
+- Accès HTTP : `http://localhost:9200` (es01) avec es02/es03 mappés sur `9201` et `9202`
 - Superuser initial : `elastic` / `changeme`
 - Utilisateur d’audit : `audit-elasticsearch` / `audit-me` (créé automatiquement par le `data-loader`)
-- Indices générés automatiquement : `audit-demo-7-01` à `audit-demo-7-10`
+- Indices générés automatiquement : `audit-demo-7.17-01` à `audit-demo-7.17-10`
 - Jeux de données : documents factices inclus dans `test/scripts/dummy_data.json` et copiés dans l’image `data-loader`
 - Kibana : http://localhost:5601 (authentification `elastic`/`changeme` ou `audit-elasticsearch`/`audit-me`)
 
-### Cluster Elasticsearch 8.x (HTTPS avec certificats)
-La pile 8.12.2 démarre avec TLS activé. Un conteneur `setup` génère automatiquement les certificats (AC + nœuds) dans le volume `certs`.
+### Cluster Elasticsearch 8.19.9 (HTTPS avec certificats)
+La pile 8.19.9 démarre avec TLS activé. Un conteneur `setup` génère automatiquement les certificats (AC + nœuds) dans le volume `certs`.
 
-Chaque nœud Elasticsearch est limité à 512 Mo de heap et 1 Go de mémoire conteneur, Kibana est limité à 512 Mo.
+Chaque nœud Elasticsearch est limité à 512 Mo de heap et 1 Go de mémoire conteneur. Kibana est limité à 1,5 Go de mémoire conteneur avec `NODE_OPTIONS=--max-old-space-size=1024`.
 
 Commandes :
 ```bash
-docker compose -f test/8/docker-compose.yml up -d
-docker compose -f test/8/docker-compose.yml logs -f data-loader
+docker compose -f test/8.19.9/docker-compose.yml up -d
+docker compose -f test/8.19.9/docker-compose.yml logs -f data-loader
 ```
 
 Paramètres clés :
-- Accès HTTPS : `https://localhost:9300`
-- AC et certificats : générés via le conteneur `setup` avec `elasticsearch-certutil` et `test/8/instances.yml`, stockés dans le volume `certs` (`/usr/share/elasticsearch/config/certs/...`, AC consommable dans les conteneurs auxiliaires via `/certs/ca/ca.crt`)
+- Accès HTTPS : `https://localhost:9300` (es01) avec es02/es03 mappés sur `9301` et `9302`
+- AC et certificats : générés via le conteneur `setup` avec `elasticsearch-certutil` et `test/scripts/instances.yml`, stockés dans le volume `certs` (`/usr/share/elasticsearch/config/certs/...`, AC consommable dans les conteneurs auxiliaires via `/certs/ca/ca.crt`)
 - Superuser initial : `elastic` / `changeme`
 - Utilisateur d’audit : `audit-elasticsearch` / `audit-me` (créé automatiquement par le `data-loader`)
-- Indices générés automatiquement : `audit-demo-8-01` à `audit-demo-8-10`
-- Kibana : https://localhost:5602 (certificat AC disponible dans le volume `certs`, par exemple `/certs/ca/ca.crt`, authentification `elastic`/`changeme` ou `audit-elasticsearch`/`audit-me`)
+- Indices générés automatiquement : `audit-demo-8.19.9-01` à `audit-demo-8.19.9-10`
+- Kibana : http://localhost:5602 (authentification `elastic`/`changeme` ou `audit-elasticsearch`/`audit-me`, service account token généré par `kibana-tokengen` dans `certs/kibana.service_token`, certificats AC disponibles dans `certs`, par exemple `test/8.19.9/certs/ca/ca.crt`)
 
 Le service `data-loader` vérifie la santé du cluster, attend l’état `green`, crée l’utilisateur cible si besoin, provisionne 10 indices et charge les documents factices embarqués (`dummy_data.json`).
 
-### Cluster Elasticsearch 9.x (HTTPS avec certificats)
-La pile 9.x (Elasticsearch/Kibana 9.2.0) démarre avec TLS activé et génère automatiquement ses certificats dans le volume `certs` via le conteneur `setup`. Les ports sont décalés pour cohabiter avec les autres stacks.
+### Cluster Elasticsearch 9.2.3 (HTTPS avec certificats)
+La pile 9.2.3 démarre avec TLS activé et génère automatiquement ses certificats dans le volume `certs` via le conteneur `setup`. Les ports sont décalés pour cohabiter avec les autres stacks.
+
+Chaque nœud Elasticsearch est limité à 512 Mo de heap et 1 Go de mémoire conteneur. Kibana est limité à 1,5 Go de mémoire conteneur avec `NODE_OPTIONS=--max-old-space-size=1024`.
 
 Commandes :
 ```bash
-docker compose -f test/9/docker-compose.yml up -d
-docker compose -f test/9/docker-compose.yml logs -f data-loader
+docker compose -f test/9.2.3/docker-compose.yml up -d
+docker compose -f test/9.2.3/docker-compose.yml logs -f data-loader
 ```
 
 Paramètres clés :
-- Accès HTTPS : `https://localhost:9400`
-- AC et certificats : générés via le conteneur `setup` avec `elasticsearch-certutil` et `test/9/instances.yml`, stockés dans le volume `certs` (`/usr/share/elasticsearch/config/certs/...`, AC consommable dans les conteneurs auxiliaires via `/certs/ca/ca.crt`)
+- Accès HTTPS : `https://localhost:9400` (es01) avec es02/es03 mappés sur `9401` et `9402`
+- AC et certificats : générés via le conteneur `setup` avec `elasticsearch-certutil` et `test/scripts/instances.yml`, stockés dans le volume `certs` (`/usr/share/elasticsearch/config/certs/...`, AC consommable dans les conteneurs auxiliaires via `/certs/ca/ca.crt`)
 - Superuser initial : `elastic` / `changeme`
 - Utilisateur d’audit : `audit-elasticsearch` / `audit-me` (créé automatiquement par le `data-loader`)
-- Indices générés automatiquement : `audit-demo-9-01` à `audit-demo-9-10`
-- Kibana : https://localhost:5603 (certificat AC disponible dans le volume `certs`, par exemple `/certs/ca/ca.crt`, authentification `elastic`/`changeme` ou `audit-elasticsearch`/`audit-me`)
+- Indices générés automatiquement : `audit-demo-9.2.3-01` à `audit-demo-9.2.3-10`
+- Kibana : http://localhost:5603 (authentification `elastic`/`changeme` ou `audit-elasticsearch`/`audit-me`, service account token généré par `kibana-tokengen` dans `certs/kibana.service_token`, certificats AC disponibles dans `certs`, par exemple `test/9.2.3/certs/ca/ca.crt`)
 
 Le service `data-loader` vérifie la santé du cluster, attend l’état `green`, crée l’utilisateur cible si besoin, provisionne 10 indices et charge les documents du fichier local embarqué (`dummy_data.json`).
 
@@ -167,8 +172,7 @@ python main.py \
   --scheme http \
   --username audit-elasticsearch \
   --password audit-me \
-  --client-name local-lab \
-  --cluster-name audit-es7
+  --client-name local-lab
 ```
 
 #### Mode HTTPS (cluster 8.x)
@@ -180,9 +184,9 @@ python main.py \
   --username audit-elasticsearch \
   --password audit-me \
   --verify-tls true \
-  --ca-cert test/certs/ca.crt \
+  --ca-cert test/8.19.9/certs/ca/ca.crt \
   --client-name local-lab \
-  --cluster-name audit-es8
+  --cluster-typology RECETTE
 ```
 
 Adaptez les chemins/ports si vous exécutez Docker sur une machine distante. Les paramètres `.env` peuvent également refléter ces valeurs (les arguments CLI prennent le pas sur le fichier).
