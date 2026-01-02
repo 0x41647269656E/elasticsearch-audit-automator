@@ -136,7 +136,7 @@ services:
           condition: service_healthy
       volumes:
         - ../scripts/dummy_data.json:/app/dummy_data.json:ro
-        - ../../audit_policy.json:/app/audit_policy.json:ro
+        - ../scripts/audit_policies/:/app/audit_policies/:ro
         - ./certs/ca/:/app/ca/:ro
       environment:
         ELASTIC_SCHEME: https
@@ -152,7 +152,7 @@ services:
         INDEX_COUNT: 10
         TARGET_INDEX_PREFIX: audit-demo-8.19.9
         ELASTIC_CLIENT_APIVERSIONING: "true"
-        # AUDIT_POLICY_PATH: /app/audit_policy_8.json
+        # AUDIT_POLICY_PATH: /app/audit_policies/audit_policy_8.json
         BULK_CHUNK_SIZE: 500
         BULK_REQUEST_TIMEOUT: 120
       command: ["python", "load_data.py"]

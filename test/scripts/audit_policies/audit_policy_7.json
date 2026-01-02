@@ -1,0 +1,19 @@
+{
+  "role_name": "audit-elasticsearch-role",
+  "role": {
+    "cluster": [
+      "monitor",
+      "read_ilm",
+      "read_slm",
+      "monitor_snapshot",
+      "read_pipeline",
+      "manage_index_templates"
+    ],
+    "indices": [
+      {
+        "names": ["*"],
+        "privileges": ["monitor", "view_index_metadata"]
+      }
+    ]
+  }
+}

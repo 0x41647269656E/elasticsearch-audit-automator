@@ -79,7 +79,7 @@ def main() -> None:
     activity_index = os.getenv("ACTIVITY_INDEX", "audit-activity")
 
     client = build_client(host, username, password, verify_certs, ca_cert)
-    seeds = load_seed(seed_file)
+    # sseeds = load_seed(seed_file)
     ensure_activity_index(client, activity_index)
 
     for i in range(operations):

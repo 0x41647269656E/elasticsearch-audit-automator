@@ -153,7 +153,7 @@ services:
           condition: service_healthy
       volumes:
         - ../scripts/dummy_data.json:/app/dummy_data.json:ro
-        - ../../audit_policy.json:/app/audit_policy.json:ro
+        - ../scripts/audit_policies/:/app/audit_policies/:ro
       environment:
         ELASTIC_SCHEME: http
         ELASTIC_HOST: es01
@@ -169,7 +169,7 @@ services:
         BULK_CHUNK_SIZE: 500
         BULK_REQUEST_TIMEOUT: 120
         SECURITY_ENABLED: "true"
-        # AUDIT_POLICY_PATH: /app/audit_policy_7.json
+        # AUDIT_POLICY_PATH: /app/audit_policies/audit_policy_7.json
       command: ["python", "load_data.py"]
 
   worker1:

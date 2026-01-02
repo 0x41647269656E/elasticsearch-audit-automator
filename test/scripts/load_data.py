@@ -18,8 +18,7 @@ def get_major_version(client: Elasticsearch) -> int:
     except ValueError:
         return 0
 
-
-def select_audit_policy_path(client: Elasticsearch) -> str:
+def select_audit_policy_path(client: Elasticsearch, overright_policy: str) -> str:
     """
     Select the appropriate audit policy file based on Elasticsearch major version.
     - ES 7.x  -> AUDIT_POLICY_PATH_7 
@@ -29,20 +28,15 @@ def select_audit_policy_path(client: Elasticsearch) -> str:
     """
 
     # Manual override has absolute priority
-    override = os.getenv("AUDIT_POLICY")
-    if override:
-        return override
+    if overright_policy:
+        return overright_policy
     
     # Auto-detect cluster version
-    info = client.info()
-    version = info.get("version", {}).get("number", "0.0.0")
-    major = int(version.split(".", 1)[0])
+    major = get_major_version(client)
 
     if major >= 8:
-        return "/app/audit_policy_8.json"
-
-    return "/app/audit_policy_7.json"
-
+        return "/app/audit_policies/audit_policy_8.json"
+    return "/app/audit_policies/audit_policy_7.json"
 
 def build_client(host: str, username: str, password: str, verify: bool, ca_cert: str | None) -> Elasticsearch:
     kwargs = {
@@ -54,7 +48,6 @@ def build_client(host: str, username: str, password: str, verify: bool, ca_cert:
     if ca_cert:
         kwargs["ca_certs"] = ca_cert
     return Elasticsearch(**kwargs)
-
 
 def wait_for_green(client: Elasticsearch, timeout: int = 600) -> None:
     start = time.time()
@@ -71,22 +64,17 @@ def wait_for_green(client: Elasticsearch, timeout: int = 600) -> None:
             raise TimeoutError("Cluster did not reach green status in time")
         time.sleep(10)
 
-
-def ensure_user(
-    client: Elasticsearch,
-    username: str,
-    password: str,
-    role_name: str,
-) -> None:
+def ensure_user( client: Elasticsearch, username: str, password: str, roles: list[str]) -> None:
     try:
         existing = client.security.get_user(username=username)
         user_info = existing.get(username, {})
-        roles = set(user_info.get("roles", []))
-        if role_name in roles:
-            logger.info("User %s already exists with role %s", username, role_name)
+        current_roles = set(user_info.get("roles", []))
+        if set(roles).issubset(current_roles):
+            logger.info("User %s already exists with roles %s", username, roles)
             return
+
         logger.info("User %s exists; updating roles", username)
-        updated_roles = sorted(roles | {role_name})
+        updated_roles = sorted(current_roles | set(roles))
         client.security.put_user(
             username=username,
             body={
@@ -98,29 +86,27 @@ def ensure_user(
         return
     except Exception:  # noqa: BLE001
         logger.info("Creating user %s", username)
+
     client.security.put_user(
         username=username,
         body={
             "password": password,
-            "roles": [role_name],
+            "roles": roles,
             "full_name": "Audit automation",
             "email": "audit@example.com",
         },
     )
 
-
 def ensure_role(client: Elasticsearch, role_name: str, role_body: dict) -> None:
     client.security.put_role(name=role_name, body=role_body)
     logger.info("Ensured role %s exists", role_name)
 
-
-def load_audit_policy(path: str) -> dict:
+def load_audit_policy(path: str) -> tuple[str, dict]:
     with open(path, "r", encoding="utf-8") as file:
         policy = json.load(file)
     if "role_name" not in policy or "role" not in policy:
         raise ValueError("Audit policy must include role_name and role fields")
-    return policy
-
+    return policy["role_name"], policy["role"]
 
 def create_indices(client: Elasticsearch, index_prefix: str, count: int) -> List[str]:
     names = [f"{index_prefix}-{i:02d}" for i in range(1, count + 1)]
@@ -147,7 +133,6 @@ def create_indices(client: Elasticsearch, index_prefix: str, count: int) -> List
             logger.warning("Index creation issue for %s: %s", name, exc)
     return names
 
-
 def load_local_documents(path: str) -> List[dict]:
     """Load documents from a local JSON file (array or NDJSON)."""
     logger.info("Loading local dataset from %s", path)
@@ -172,7 +157,6 @@ def load_local_documents(path: str) -> List[dict]:
             continue
     return documents
 
-
 def generate_actions(documents: List[dict], indices: List[str]) -> Iterable[dict]:
     index_count = len(indices)
     for idx, doc in enumerate(documents):
@@ -182,13 +166,7 @@ def generate_actions(documents: List[dict], indices: List[str]) -> Iterable[dict
             "_source": doc,
         }
 
-def bulk_ingest(
-    client: Elasticsearch,
-    documents: List[dict],
-    indices: List[str],
-    batch_size: int = 500,
-    request_timeout: int = 120,
-) -> None:
+def bulk_ingest(client: Elasticsearch, documents: List[dict], indices: List[str], batch_size: int = 500, request_timeout: int = 120) -> None:
     if not documents:
         logger.warning("No documents found to ingest")
         return
@@ -217,9 +195,7 @@ def main() -> None:
     scheme = os.getenv("ELASTIC_SCHEME", "http")
     host_name = os.getenv("ELASTIC_HOST", "localhost")
     port = os.getenv("ELASTIC_PORT", "9200")
-
     host = f"{scheme}://{host_name}:{port}"
-    # host = os.getenv("ELASTIC_HOST", "http://localhost:9200")
 
     username = os.getenv("ELASTIC_USERNAME", "elastic")
     password = os.getenv("ELASTIC_PASSWORD", "changeme")
@@ -233,7 +209,7 @@ def main() -> None:
     bulk_chunk_size = int(os.getenv("BULK_CHUNK_SIZE", "500"))
     bulk_request_timeout = int(os.getenv("BULK_REQUEST_TIMEOUT", "120"))
     data_file = os.getenv("DATA_FILE", "/app/dummy_data.json")
-    audit_policy_path = os.getenv("AUDIT_POLICY_PATH", "/app/audit_policy.json")
+    audit_policy_path = os.getenv("AUDIT_POLICY_PATH", "")
 
     admin_client = build_client(host, username if security_enabled else "", password if security_enabled else "", verify_certs, ca_cert)
     wait_for_green(admin_client)
@@ -242,20 +218,20 @@ def main() -> None:
         major = get_major_version(admin_client)
         logger.info("Detected Elasticsearch major version: %s", major)
 
-        policy_path  = select_audit_policy_path(major)
+        policy_path = select_audit_policy_path(admin_client, audit_policy_path)
         logger.info("Using audit policy file: %s", policy_path)
 
-        audit_policy = load_audit_policy(policy_path)
-        role_name = audit_policy["role_name"]
-        role_body = audit_policy["role"]
+        role_name, role_body = load_audit_policy(policy_path)
+
         logger.info("Audit policy file loaded with role_name: %s", role_name)
 
-        ensure_role(admin_client, role_name, role_body)
-        ensure_user(admin_client, target_username, target_password, role_name)
-        ingest_client = build_client(host, target_username, target_password, verify_certs, ca_cert)
-    else:
-        ingest_client = admin_client
+        # roles = [role_name, "kibana_admin"], if you need to add build-in roles
+        roles = [role_name]
 
+        ensure_role(admin_client, role_name, role_body)
+        ensure_user(admin_client, target_username, target_password, roles)
+
+    ingest_client = admin_client
     indices = create_indices(ingest_client, index_prefix, index_count)
     documents = load_local_documents(data_file)
     bulk_ingest(ingest_client, documents, indices, batch_size=bulk_chunk_size, request_timeout=bulk_request_timeout)
