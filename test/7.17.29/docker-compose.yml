@@ -191,6 +191,44 @@ services:
     volumes:
       - ../scripts/dummy_data.json:/app/dummy_data.json:ro
 
+  worker2:
+    build:
+      context: ../scripts
+    depends_on:
+      es01:
+        condition: service_healthy
+    environment:
+      ELASTIC_HOST: http://es01:9200
+      ELASTIC_USERNAME: elastic
+      ELASTIC_PASSWORD: changeme
+      TARGET_INDEX_PREFIX: audit-demo-7.17
+      VERIFY_CERTS: "false"
+      WORKER_ID: worker1
+      WORKER_OPS: 100000
+      WORKER_PAUSE: 0.1
+    command: ["python", "query_worker.py"]
+    volumes:
+      - ../scripts/dummy_data.json:/app/dummy_data.json:ro
+
+  worker3:
+    build:
+      context: ../scripts
+    depends_on:
+      es01:
+        condition: service_healthy
+    environment:
+      ELASTIC_HOST: http://es01:9200
+      ELASTIC_USERNAME: elastic
+      ELASTIC_PASSWORD: changeme
+      TARGET_INDEX_PREFIX: audit-demo-7.17
+      VERIFY_CERTS: "false"
+      WORKER_ID: worker1
+      WORKER_OPS: 100000
+      WORKER_PAUSE: 0.1
+    command: ["python", "query_worker.py"]
+    volumes:
+      - ../scripts/dummy_data.json:/app/dummy_data.json:ro
+
 volumes:
   es7-es01-data:
   es7-es02-data:
