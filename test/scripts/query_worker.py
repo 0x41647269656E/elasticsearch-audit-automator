@@ -20,10 +20,40 @@ def build_client(host: str, username: str, password: str, verify: bool, ca_cert:
     return Elasticsearch(**kwargs)
 
 
-def load_seed(path: str) -> List[Dict[str, Any]]:
+
+def load_seed(path: str) -> List[Any]:
+    """
+    Charge un fichier seed au format :
+      - JSON classique (liste ou objet)
+      - JSON Lines (un JSON par ligne)
+    Retourne toujours une liste.
+    """
     with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    return data if isinstance(data, list) else []
+        raw = f.read().strip()
+
+    if not raw:
+        return []
+
+    # 1) Tentative JSON "normal" (ex: [ ... ] ou { ... })
+    try:
+        parsed = json.loads(raw)
+        # Normalise en liste
+        return parsed if isinstance(parsed, list) else [parsed]
+    except json.JSONDecodeError:
+        pass
+
+    # 2) Fallback JSONL: un JSON par ligne
+    seeds: List[Any] = []
+    for i, line in enumerate(raw.splitlines(), start=1):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            seeds.append(json.loads(line))
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Seed file '{path}': JSON invalide ligne {i}: {e}") from e
+
+    return seeds
 
 
 def ensure_activity_index(client: Elasticsearch, name: str) -> None:
@@ -79,7 +109,7 @@ def main() -> None:
     activity_index = os.getenv("ACTIVITY_INDEX", "audit-activity")
 
     client = build_client(host, username, password, verify_certs, ca_cert)
-    # sseeds = load_seed(seed_file)
+    seeds = load_seed(seed_file)
     ensure_activity_index(client, activity_index)
 
     for i in range(operations):
