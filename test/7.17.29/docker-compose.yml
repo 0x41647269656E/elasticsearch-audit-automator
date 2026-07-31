@@ -180,6 +180,8 @@ services:
     depends_on:
       es01:
         condition: service_healthy
+      data-loader:
+        condition: service_completed_successfully
     environment:
       ELASTIC_HOST: http://es01:9200
       ELASTIC_USERNAME: elastic
@@ -199,13 +201,15 @@ services:
     depends_on:
       es01:
         condition: service_healthy
+      data-loader:
+        condition: service_completed_successfully
     environment:
       ELASTIC_HOST: http://es01:9200
       ELASTIC_USERNAME: elastic
       ELASTIC_PASSWORD: changeme
       TARGET_INDEX_PREFIX: audit-demo-7.17
       VERIFY_CERTS: "false"
-      WORKER_ID: worker1
+      WORKER_ID: worker2
       WORKER_OPS: 100000
       WORKER_PAUSE: 0.1
     command: ["python", "query_worker.py"]
@@ -218,13 +222,15 @@ services:
     depends_on:
       es01:
         condition: service_healthy
+      data-loader:
+        condition: service_completed_successfully
     environment:
       ELASTIC_HOST: http://es01:9200
       ELASTIC_USERNAME: elastic
       ELASTIC_PASSWORD: changeme
       TARGET_INDEX_PREFIX: audit-demo-7.17
       VERIFY_CERTS: "false"
-      WORKER_ID: worker1
+      WORKER_ID: worker3
       WORKER_OPS: 100000
       WORKER_PAUSE: 0.1
     command: ["python", "query_worker.py"]

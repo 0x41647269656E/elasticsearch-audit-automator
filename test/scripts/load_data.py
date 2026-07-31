@@ -9,6 +9,8 @@ from elasticsearch import Elasticsearch, helpers
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
+ADMIN_REQUEST_TIMEOUT = 60
+
 def get_major_version(client: Elasticsearch) -> int:
     info = client.info()
     version_str = info.get("version", {}).get("number", "0.0.0")
@@ -70,6 +72,9 @@ def wait_for_green(client: Elasticsearch, timeout: int = 600) -> None:
         time.sleep(10)
 
 def ensure_user( client: Elasticsearch, username: str, password: str, roles: list[str]) -> None:
+    # Same long timeout as the other admin calls: workers already hammer the
+    # cluster by the time we get here, and the 10s default loses the race.
+    client = client.options(request_timeout=ADMIN_REQUEST_TIMEOUT)
     try:
         existing = client.security.get_user(username=username)
         user_info = existing.get(username, {})
@@ -103,7 +108,9 @@ def ensure_user( client: Elasticsearch, username: str, password: str, roles: lis
     )
 
 def ensure_role(client: Elasticsearch, role_name: str, role_body: dict) -> None:
-    client.security.put_role(name=role_name, body=role_body)
+    client.options(request_timeout=ADMIN_REQUEST_TIMEOUT).security.put_role(
+        name=role_name, body=role_body
+    )
     logger.info("Ensured role %s exists", role_name)
 
 def load_audit_policy(path: str) -> tuple[str, dict]:
