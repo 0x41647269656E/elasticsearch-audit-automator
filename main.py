@@ -6,6 +6,7 @@ import select
 import socket
 import socketserver
 import subprocess
+import sys
 import threading
 import ssl
 import tempfile
@@ -15,6 +16,8 @@ from typing import Any, Dict, List, Optional
 import paramiko
 import requests
 from dotenv import load_dotenv
+
+ANALYSE_SCRIPT = Path("analyse.py")
 
 FORWARD_BUFFER_SIZE = 32768
 
@@ -486,12 +489,23 @@ def write_audit_info(
 
 
 def prompt_analysis(audit_path: Path) -> None:
-    choice = input("Souhaitez-vous lancer le script d’analyse ? (Y/n) ").strip().lower()
+    if not ANALYSE_SCRIPT.exists():
+        print(
+            f"{ANALYSE_SCRIPT} introuvable ; analyse non lancée. "
+            f"Les données d'audit sont prêtes dans {audit_path}."
+        )
+        return
+
+    try:
+        choice = input("Souhaitez-vous lancer le script d’analyse ? (Y/n) ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        # Non-interactive run (cron, CI): the audit is already written to disk.
+        print(f"\nPas d'entrée interactive. Analyse ignorée ; audit disponible dans {audit_path}.")
+        return
+
     if choice in {"", "y", "yes"}:
         try:
-            subprocess.run(["python", "analyse.py", str(audit_path)], check=True)
-        except FileNotFoundError:
-            print("analyse.py introuvable. Ajoutez-le avant d'exécuter l'analyse.")
+            subprocess.run([sys.executable, str(ANALYSE_SCRIPT), str(audit_path)], check=True)
         except subprocess.CalledProcessError as exc:
             print(f"Le script d'analyse a échoué: {exc}")
     else:
