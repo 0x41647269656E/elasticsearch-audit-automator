@@ -11,15 +11,15 @@ import threading
 import ssl
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import paramiko
 import requests
 from dotenv import load_dotenv
 
-ANALYSE_SCRIPT = Path("analyse.py")
-
+DEFAULT_REQUEST_TIMEOUT = 60.0
 FORWARD_BUFFER_SIZE = 32768
+ANALYSE_SCRIPT = Path("analyse.py")
 
 
 def forward_stream(source: Any, dest: Any, buffer_size: int = FORWARD_BUFFER_SIZE) -> bool:
@@ -155,6 +155,11 @@ def parse_args() -> argparse.Namespace:
         help="Cluster typology (PRODUCTION, PREPROD, RECETTE, DEV, AUTRE)",
     )
     parser.add_argument("--verify-tls", choices=["true", "false"], help="Verify TLS certificates")
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        help=f"Per-request timeout in seconds (default: {DEFAULT_REQUEST_TIMEOUT:g})",
+    )
     parser.add_argument("--ca-cert", help="Path to CA certificate (.crt) for TLS validation")
     parser.add_argument("--ssh-host", help="SSH jump host")
     parser.add_argument("--ssh-port", type=int, default=None, help="SSH port")
@@ -195,6 +200,8 @@ def load_configuration(args: argparse.Namespace) -> Dict[str, Any]:
         ),
         "verify_tls": env_bool(args.verify_tls or os.getenv("VERIFY_TLS", "true")),
         "ca_cert": args.ca_cert or os.getenv("CA_CERT_PATH"),
+        "timeout": args.timeout
+        or float(os.getenv("REQUEST_TIMEOUT", str(DEFAULT_REQUEST_TIMEOUT))),
         "ssh_host": args.ssh_host or os.getenv("SSH_HOST"),
         "ssh_port": args.ssh_port or int(os.getenv("SSH_PORT", "22")),
         "ssh_username": args.ssh_username or os.getenv("SSH_USERNAME"),
@@ -246,9 +253,15 @@ def create_audit_dir(base_dir: Path, client: str, cluster: str, host: str) -> Pa
     return audit_dir
 
 
-def execute_request(session: requests.Session, method: str, url: str, verify: bool | str) -> requests.Response:
+def execute_request(
+    session: requests.Session,
+    method: str,
+    url: str,
+    verify: bool | str,
+    timeout: float = DEFAULT_REQUEST_TIMEOUT,
+) -> requests.Response:
     method = method.upper()
-    response = session.request(method, url, verify=verify)
+    response = session.request(method, url, verify=verify, timeout=timeout)
     return response
 
 
@@ -268,6 +281,7 @@ def run_commands(
     commands: List[Dict[str, Any]],
     verify_tls: bool | str,
     audit_dir: Path,
+    timeout: float = DEFAULT_REQUEST_TIMEOUT,
 ) -> Dict[str, List[str]]:
     executed: List[str] = []
     failed: List[str] = []
@@ -284,7 +298,7 @@ def run_commands(
         url = f"{base_url}{path}"
         print(f"Executing {name}: {method} {path}")
         try:
-            response = execute_request(session, method, url, verify_tls)
+            response = execute_request(session, method, url, verify_tls, timeout)
             if response.ok:
                 content = response.json() if output_format == "json" else response.text
                 save_output(audit_dir, name, output_format, content)
@@ -305,6 +319,38 @@ def run_commands(
             log_file.write("\n".join(errors))
 
     return {"executed": executed, "failed": failed}
+
+
+def extract_peer_chain(ssock: Any) -> Tuple[List[bytes], str]:
+    """Return the peer chain as DER bytes plus how it was obtained.
+
+    CPython only exposes the full chain from 3.13 onward. On older runtimes the
+    leaf is all we can read, and the report must say so rather than let a
+    one-entry list pass for a complete chain.
+    """
+    for attr, label in (
+        ("get_verified_chain", "verified"),
+        ("get_unverified_chain", "unverified"),
+    ):
+        getter = getattr(ssock, attr, None)
+        if getter is None:
+            continue
+        try:
+            chain = getter()
+        except Exception:
+            continue
+        if chain:
+            return [_as_der(cert) for cert in chain], label
+
+    leaf = ssock.getpeercert(True)
+    return ([_as_der(leaf)] if leaf else []), "leaf-only"
+
+
+def _as_der(cert: Any) -> bytes:
+    """Normalize a certificate to DER bytes (3.13 returns objects, not bytes)."""
+    if isinstance(cert, (bytes, bytearray)):
+        return bytes(cert)
+    return cert.public_bytes(ssl.Encoding.DER) if hasattr(ssl, "Encoding") else cert.public_bytes()
 
 
 def decode_certificate(der_bytes: bytes) -> Dict[str, Any]:
@@ -336,6 +382,7 @@ def fetch_tls_chain(
     server_hostname: str,
     verify: bool,
     ca_cert: Optional[str] = None,
+    timeout: float = DEFAULT_REQUEST_TIMEOUT,
 ) -> Dict[str, Any]:
     """Retrieve TLS chain information from a remote HTTPS endpoint."""
     ctx = ssl.create_default_context()
@@ -347,19 +394,25 @@ def fetch_tls_chain(
         ctx.verify_mode = ssl.CERT_NONE
 
     try:
-        with socket.create_connection((host, port), timeout=10) as sock:
+        with socket.create_connection((host, port), timeout=timeout) as sock:
+            sock.settimeout(timeout)
             with ctx.wrap_socket(sock, server_hostname=server_hostname) as ssock:
-                chain_ders: List[bytes]
-                if hasattr(ssock, "getpeercertchain"):
-                    chain_ders = ssock.getpeercertchain()  # type: ignore[attr-defined]
-                else:
-                    leaf = ssock.getpeercert(True)
-                    chain_ders = [leaf] if leaf else []
+                chain_ders, chain_source = extract_peer_chain(ssock)
     except Exception as exc:
-        return {"status": "error", "error": str(exc), "chain": []}
+        return {"status": "error", "error": str(exc), "chain": [], "chain_source": "unavailable"}
 
-    decoded_chain = [decode_certificate(cert) for cert in chain_ders]
-    return {"status": "ok", "chain": decoded_chain}
+    report: Dict[str, Any] = {
+        "status": "ok",
+        "chain_source": chain_source,
+        "chain": [decode_certificate(cert) for cert in chain_ders],
+    }
+    if chain_source == "leaf-only":
+        report["warning"] = (
+            f"Python {sys.version_info.major}.{sys.version_info.minor} cannot expose the peer "
+            "chain; only the leaf certificate was captured. Run the audit on Python 3.13+ to "
+            "collect intermediates and the CA."
+        )
+    return report
 
 
 def persist_tls_report(
@@ -377,6 +430,7 @@ def persist_tls_report(
         server_hostname=config["host"],
         verify=config["verify_tls"],
         ca_cert=config.get("ca_cert"),
+        timeout=config.get("timeout", DEFAULT_REQUEST_TIMEOUT),
     )
     report_path = audit_dir / "tls_report.json"
     with open(report_path, "w", encoding="utf-8") as file:
@@ -394,11 +448,16 @@ def resolve_verify_setting(config: Dict[str, Any]) -> bool | str:
     return True
 
 
-def detect_cluster_name(session: requests.Session, base_url: str, verify_tls: bool | str) -> str:
+def detect_cluster_name(
+    session: requests.Session,
+    base_url: str,
+    verify_tls: bool | str,
+    timeout: float = DEFAULT_REQUEST_TIMEOUT,
+) -> str:
     """Retrieve the Elasticsearch cluster name from the health endpoint with a root fallback."""
     health_error: Optional[Exception] = None
     try:
-        health = execute_request(session, "GET", f"{base_url}/_cluster/health", verify_tls)
+        health = execute_request(session, "GET", f"{base_url}/_cluster/health", verify_tls, timeout)
         if health.ok:
             payload = health.json()
             cluster_name = payload.get("cluster_name")
@@ -408,7 +467,7 @@ def detect_cluster_name(session: requests.Session, base_url: str, verify_tls: bo
         health_error = exc
 
     try:
-        root = execute_request(session, "GET", f"{base_url}/", verify_tls)
+        root = execute_request(session, "GET", f"{base_url}/", verify_tls, timeout)
         if root.ok:
             payload = root.json()
             cluster_name = payload.get("cluster_name")
@@ -420,11 +479,16 @@ def detect_cluster_name(session: requests.Session, base_url: str, verify_tls: bo
     raise RuntimeError("Unable to determine Elasticsearch cluster name") from health_error
 
 
-def collect_cluster_details(session: requests.Session, base_url: str, verify_tls: bool | str) -> Dict[str, Any]:
+def collect_cluster_details(
+    session: requests.Session,
+    base_url: str,
+    verify_tls: bool | str,
+    timeout: float = DEFAULT_REQUEST_TIMEOUT,
+) -> Dict[str, Any]:
     details: Dict[str, Any] = {}
 
     try:
-        nodes_info = execute_request(session, "GET", f"{base_url}/_nodes", verify_tls)
+        nodes_info = execute_request(session, "GET", f"{base_url}/_nodes", verify_tls, timeout)
         if nodes_info.ok:
             info_payload = nodes_info.json()
             details["nodes_os"] = {
@@ -439,7 +503,7 @@ def collect_cluster_details(session: requests.Session, base_url: str, verify_tls
         details["nodes_os"] = {}
 
     try:
-        stats = execute_request(session, "GET", f"{base_url}/_nodes/stats", verify_tls)
+        stats = execute_request(session, "GET", f"{base_url}/_nodes/stats", verify_tls, timeout)
         if stats.ok:
             stats_payload = stats.json()
             details["nodes_stats"] = {
@@ -520,9 +584,9 @@ def main() -> None:
     data_dir = ensure_data_dir()
 
     session = build_session(config)
-    connection_method = "ssh" if config.get("ssh_host") else config["scheme"]
     base_url = build_base_url(config)
     verify_setting = resolve_verify_setting(config)
+    timeout = config["timeout"]
 
     if config.get("ssh_host"):
         if not config.get("ssh_username"):
@@ -537,9 +601,9 @@ def main() -> None:
             remote_port=config["port"],
         ) as tunnel:
             local_base_url = build_base_url(config, tunnel.local_port)
-            cluster_name = detect_cluster_name(session, local_base_url, verify_setting)
+            cluster_name = detect_cluster_name(session, local_base_url, verify_setting, timeout)
             print(f"Detected cluster name: {cluster_name}")
-            node_details = collect_cluster_details(session, local_base_url, verify_setting)
+            node_details = collect_cluster_details(session, local_base_url, verify_setting, timeout)
             audit_dir = create_audit_dir(data_dir, config["client_name"], cluster_name, config["host"])
             tls_report = persist_tls_report(audit_dir, config, local_port=tunnel.local_port)
             results = run_commands(
@@ -548,6 +612,7 @@ def main() -> None:
                 commands_meta.get("commands", []),
                 verify_setting,
                 audit_dir,
+                timeout,
             )
             write_audit_info(
                 audit_dir,
@@ -562,9 +627,9 @@ def main() -> None:
             )
             prompt_analysis(audit_dir)
     else:
-        cluster_name = detect_cluster_name(session, base_url, verify_setting)
+        cluster_name = detect_cluster_name(session, base_url, verify_setting, timeout)
         print(f"Detected cluster name: {cluster_name}")
-        node_details = collect_cluster_details(session, base_url, verify_setting)
+        node_details = collect_cluster_details(session, base_url, verify_setting, timeout)
         audit_dir = create_audit_dir(data_dir, config["client_name"], cluster_name, config["host"])
         tls_report = persist_tls_report(audit_dir, config)
         results = run_commands(
@@ -573,6 +638,7 @@ def main() -> None:
             commands_meta.get("commands", []),
             verify_setting,
             audit_dir,
+            timeout,
         )
         write_audit_info(
             audit_dir,
