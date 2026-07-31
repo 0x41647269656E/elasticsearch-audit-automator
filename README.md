@@ -34,6 +34,7 @@ Variables principales :
 - `ELASTIC_HOST` / `ELASTIC_PORT` / `ELASTIC_SCHEME` : cible Elasticsearch (défauts : `localhost` / `9200` / `http`).
 - `ELASTIC_USERNAME` / `ELASTIC_PASSWORD` ou `ELASTIC_BEARER_TOKEN` : authentification.
 - `VERIFY_TLS` : `true`/`false` pour la validation TLS (défaut : `true`).
+- `REQUEST_TIMEOUT` : délai maximal par requête, en secondes (défaut : `60`, surchargeable via `--timeout`). Sans lui, un nœud qui accepte la connexion sans répondre bloque l’audit indéfiniment.
 - `CLIENT_NAME` : nom utilisé dans les dossiers d’audit (défaut : `client`).
 - `CLUSTER_TYPOLOGY` : typologie de cluster (`PRODUCTION`, `PREPROD`, `RECETTE`, `DEV`, `AUTRE`, défaut : `AUTRE`).
 - `SSH_HOST`, `SSH_PORT`, `SSH_USERNAME`, `SSH_KEY_PATH`, `SSH_PASSWORD` : remplissez si vous passez par un rebond SSH.
@@ -81,7 +82,11 @@ python main.py \
   --port 9200
 ```
 
-Chaque audit crée un dossier `data/YYYY-MM-DD_HH-mm-ss-<client>-<cluster>` contenant les réponses aux commandes, `audit_infos.json` et éventuellement `errors.log`.
+Chaque audit crée un dossier `data/YYYY-MM-DD_HH-mm-ss-<client>-<cluster>` contenant les réponses aux commandes, `audit_infos.json` et éventuellement `errors.log`. Le contenu de `data/` est ignoré par git : il contient des données de sécurité du cluster (utilisateurs, rôles, mappings de rôles) et ne doit jamais être commité.
+
+En HTTPS, un `tls_report.json` est également produit. Son champ `chain_source` indique comment la chaîne a été obtenue : `verified`/`unverified` si Python a pu la lire (3.13+), `leaf-only` si le runtime ne l’expose pas — dans ce cas seul le certificat feuille est capturé et un avertissement l’indique explicitement.
+
+L’audit ne bloque pas sur une absence d’entrée interactive : en exécution planifiée (cron, CI), l’étape d’analyse est simplement ignorée et le script se termine normalement.
 
 ## Provisionner des clusters de test (Docker Compose)
 ### Prérequis
