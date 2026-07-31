@@ -169,7 +169,9 @@ services:
         BULK_CHUNK_SIZE: 500
         BULK_REQUEST_TIMEOUT: 120
         SECURITY_ENABLED: "true"
-        # AUDIT_POLICY_PATH: /app/audit_policies/audit_policy_7.json
+        # Défaut pour 7.x : audit_policy_7_lab.json. Décommenter pour provisionner
+        # le rôle strictement en lecture (5 commandes de moins, voir README).
+        # AUDIT_POLICY_PATH: /app/audit_policies/audit_policy_7_client.json
       command: ["python", "load_data.py"]
 
   worker1:

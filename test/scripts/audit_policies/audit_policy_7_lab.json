@@ -1,0 +1,21 @@
+{
+  "_comment": "ES 7.x LAB policy. Grants manage_security and manage_enrich so the test stack exercises the security and enrich commands. Both are WRITE-capable (manage_security can create and delete users and roles) - do not hand this to a client. Use audit_policy_7_client.json for real engagements. manage_index_templates is deliberately absent: monitor already covers reading component/index/legacy templates on 7.17, verified against a live cluster.",
+  "role_name": "audit-elasticsearch-role",
+  "role": {
+    "cluster": [
+      "monitor",
+      "read_ilm",
+      "read_slm",
+      "monitor_snapshot",
+      "read_pipeline",
+      "manage_enrich",
+      "manage_security"
+    ],
+    "indices": [
+      {
+        "names": ["*"],
+        "privileges": ["monitor", "view_index_metadata"]
+      }
+    ]
+  }
+}

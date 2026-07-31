@@ -101,6 +101,25 @@ Chaque audit crée un dossier `data/YYYY-MM-DD_HH-mm-ss-<client>-<cluster>` cont
 - **`data-loader` bloqué sur `waiting for green`** : le cluster n’est pas prêt (nœuds en attente, allocation lente). Vérifiez les logs Elasticsearch et assurez-vous que tous les nœuds démarrent correctement.
 - **Permissions refusées sur le volume de données** : les volumes Docker existants peuvent contenir des droits incompatibles. Supprimez les volumes concernés (`docker volume rm ...`) puis relancez la stack.
 
+### Rôle d’audit et politiques de privilèges
+Le `data-loader` provisionne le rôle `audit-elasticsearch-role` à partir d’un fichier de `test/scripts/audit_policies/`, choisi selon la version majeure du cluster. `AUDIT_POLICY_PATH` permet de forcer un fichier précis.
+
+| Fichier | Usage | Contenu |
+|---|---|---|
+| `audit_policy_8.json` | ES 8.x / 9.x (défaut) | `read_security` existe : lecture seule sur la sécurité |
+| `audit_policy_7_lab.json` | ES 7.x (défaut) | ajoute `manage_security` et `manage_enrich` |
+| `audit_policy_7_client.json` | ES 7.x, modèle client | strictement en lecture, aucun privilège d’écriture |
+
+**Limitation de la plateforme en 7.x** : `read_security` n’existe qu’à partir d’ES 8.0. Sur un cluster 7.x, lire `_security/user`, `_security/role`, `_security/role_mapping` et `_security/privilege` impose `manage_security`, qui autorise aussi la **création et la suppression** d’utilisateurs et de rôles. Il n’existe pas d’équivalent en lecture seule. De même, `_enrich/policy` exige `manage_enrich`.
+
+Couverture mesurée sur la stack 7.17.29 (43 commandes) :
+- `audit_policy_7_lab.json` → **41/43**
+- `audit_policy_7_client.json` → **36/43** (les 4 commandes `security_*` et `enrich_policies` sont refusées en 403)
+
+Dans les deux cas, `api_keys_query` et `security_api_keys` échouent : le service de clés d’API d’ES 7.x requiert TLS sur la couche HTTP, désactivé sur cette stack. Ce n’est pas un problème de privilèges — `elastic` lui-même reçoit `api keys are not enabled`.
+
+`manage_index_templates` n’est volontairement présent dans aucune politique 7.x : `monitor` suffit à lire les templates (vérifié sur cluster réel), le privilège d’écriture n’apporterait rien à l’audit.
+
 ### Cluster Elasticsearch 7.17.29 (HTTP, auth basique, transport chiffré)
 Un jeu de conteneurs Docker permet de démarrer trois nœuds 7.17.29 sans TLS côté HTTP mais avec sécurité activée. Le transport inter-nœuds est chiffré via des certificats générés automatiquement par le conteneur `setup` dans le volume `certs`, ce qui satisfait les bootstrap checks tout en conservant des appels HTTP simples pour les clients.
 

@@ -1,0 +1,19 @@
+{
+  "_comment": "ES 7.x CLIENT policy: strictly read-only, no privilege that can modify the cluster. This is the set to request during a real engagement. ES 7.x has no read-only equivalent of read_security (added in 8.0) nor a read-only way to list templates or enrich policies, so those commands will return 403 - that is a platform limitation, not a misconfiguration.",
+  "role_name": "audit-elasticsearch-role",
+  "role": {
+    "cluster": [
+      "monitor",
+      "read_ilm",
+      "read_slm",
+      "monitor_snapshot",
+      "read_pipeline"
+    ],
+    "indices": [
+      {
+        "names": ["*"],
+        "privileges": ["monitor", "view_index_metadata"]
+      }
+    ]
+  }
+}

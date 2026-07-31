@@ -21,8 +21,13 @@ def get_major_version(client: Elasticsearch) -> int:
 def select_audit_policy_path(client: Elasticsearch, overright_policy: str) -> str:
     """
     Select the appropriate audit policy file based on Elasticsearch major version.
-    - ES 7.x  -> AUDIT_POLICY_PATH_7 
-    - ES 8.x+ -> AUDIT_POLICY_PATH_8
+    - ES 7.x  -> audit_policy_7_lab.json
+    - ES 8.x+ -> audit_policy_8.json
+
+    The 7.x default is the LAB policy so the test stack can exercise every
+    command; it grants manage_security, which 7.x requires to read the security
+    APIs at all. Point AUDIT_POLICY_PATH at audit_policy_7_client.json to
+    provision the strictly read-only role instead.
 
     If AUDIT_POLICY env variable is defined, it override.
     """
@@ -30,13 +35,13 @@ def select_audit_policy_path(client: Elasticsearch, overright_policy: str) -> st
     # Manual override has absolute priority
     if overright_policy:
         return overright_policy
-    
+
     # Auto-detect cluster version
     major = get_major_version(client)
 
     if major >= 8:
         return "/app/audit_policies/audit_policy_8.json"
-    return "/app/audit_policies/audit_policy_7.json"
+    return "/app/audit_policies/audit_policy_7_lab.json"
 
 def build_client(host: str, username: str, password: str, verify: bool, ca_cert: str | None) -> Elasticsearch:
     kwargs = {
