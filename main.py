@@ -18,6 +18,8 @@ import requests
 from dotenv import load_dotenv
 
 DEFAULT_REQUEST_TIMEOUT = 60.0
+# 1.0 has no analysis axes; 1.1 adds the `axes` block and per-command `axes`.
+SUPPORTED_COMMANDS_VERSIONS = {"1.0", "1.1"}
 FORWARD_BUFFER_SIZE = 32768
 ANALYSE_SCRIPT = Path("analyse.py")
 
@@ -214,8 +216,12 @@ def load_configuration(args: argparse.Namespace) -> Dict[str, Any]:
 def load_commands(commands_path: str) -> Dict[str, Any]:
     with open(commands_path, "r", encoding="utf-8") as file:
         data = json.load(file)
-    if data.get("version") != "1.0":
-        raise ValueError("commands.json version must be 1.0")
+    version = data.get("version")
+    if version not in SUPPORTED_COMMANDS_VERSIONS:
+        supported = ", ".join(sorted(SUPPORTED_COMMANDS_VERSIONS))
+        raise ValueError(
+            f"Unsupported commands.json version: {version!r}. Supported: {supported}"
+        )
     return data
 
 

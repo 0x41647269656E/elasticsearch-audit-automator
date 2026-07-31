@@ -1,305 +1,413 @@
 {
-  "version": "1.0",
+  "version": "1.1",
+  "restitution": {
+    "langue": "fr",
+    "severites": ["CRITIQUE", "MAJEUR", "MINEUR", "INFORMATIF"],
+    "champs_constat": [
+      "constat",
+      "valeur_relevee",
+      "severite",
+      "impact",
+      "remediation",
+      "reference"
+    ],
+    "consigne_globale": "Rédige tous les constats en français. Chaque constat doit citer la valeur effectivement relevée dans les artefacts, jamais une valeur supposée. N'invente aucun chiffre : si une donnée nécessaire est absente ou si la commande qui la porte a échoué, dis-le explicitement et abaisse la portée du constat au lieu de conclure. Pondère chaque sévérité par le champ cluster_typology de audit_infos.json. Termine chaque axe par la liste de ses angles morts."
+  },
+  "axes": {
+    "resilience": {
+      "titre": "Conception pour la résilience",
+      "reference": "https://www.elastic.co/docs/deploy-manage/production-guidance/availability-and-resilience",
+      "prompt": "Évalue la capacité du cluster à survivre à la perte d'un nœud. Croise le nombre de nœuds et leurs rôles (nodes_infos, cluster_health) avec le number_of_replicas relevé par index (indices_settings) et l'état des shards (shards_list, cluster_state). Un index sans replica sur un cluster multi-nœuds signifie perte de données à la première défaillance : CRITIQUE en PRODUCTION, MAJEUR en PREPROD, INFORMATIF en DEV. Signale tout shard unassigned ou initializing persistant, et rattache-le à sa cause si cluster_state la donne (allocation filtrée, disque plein, absence de nœud éligible). Vérifie qu'il existe au moins trois nœuds éligibles maître et que discovery.zen.minimum_master_nodes ou cluster.initial_master_nodes (nodes_settings) n'expose pas à un split-brain. Un cluster mono-nœud n'est pas un défaut en DEV : ne le remonte qu'en fonction de la typologie."
+    },
+    "dimensionnement": {
+      "titre": "Dimensionnement et montée en charge",
+      "reference": "https://www.elastic.co/docs/deploy-manage/production-guidance/scaling-considerations",
+      "prompt": "Juge la cohérence entre la charge portée et les ressources allouées. Aucun relevé ne suffit seul : croise le heap par nœud (nodes_jvm_info) avec la RAM totale de la machine (audit_infos.json, nodes_resources), le volume indexé et le nombre de shards (cluster_stats, index_stats). Applique les deux règles du guide : le heap ne doit pas dépasser 50 % de la RAM, le reste servant au cache du système de fichiers, et il ne doit pas dépasser ~31 Go sous peine de perdre la compression des pointeurs. Signale toute hétérogénéité de heap, de version ou d'OS entre nœuds (nodes_jvm_info, nodes_infos, nodes_os) : un cluster dépareillé se dimensionne au plus faible. Utilise nodes_hot_threads et active_tasks comme indices de saturation, jamais comme preuve à eux seuls, et rattache-les à une cause relevée ailleurs."
+    },
+    "shards": {
+      "titre": "Dimensionnement des shards",
+      "reference": "https://www.elastic.co/docs/deploy-manage/production-guidance/optimize-performance/size-shards",
+      "prompt": "Détecte le sur-shardage et le sous-shardage. Calcule la taille moyenne de shard à partir du volume et du nombre de shards (indices_list, index_stats, shards_list) et compare-la à la fourchette recommandée de 10 à 50 Go pour des données de recherche. Calcule ensuite le nombre de shards par Go de heap sur l'ensemble du cluster et compare-le au plafond de 20 recommandé par Elastic : au-delà, la mémoire de coordination devient le facteur limitant. Un grand nombre de très petits shards est le défaut le plus fréquent et le plus coûteux : remonte-le avec le décompte exact. Croise avec index_templates pour dire si le problème est structurel, inscrit dans les modèles, ou ponctuel sur quelques index. Ne conclus pas sur un cluster de démonstration au volume négligeable : signale que l'échantillon est trop faible pour extrapoler."
+    },
+    "indexation": {
+      "titre": "Performance d'indexation",
+      "reference": "https://www.elastic.co/docs/deploy-manage/production-guidance/optimize-performance/indexing-speed",
+      "prompt": "Analyse le chemin d'écriture. Croise le débit et la latence d'indexation (write_indexing_stats) avec l'activité de fusion de segments (write_merge_stats) et la fréquence de rafraîchissement (write_refresh_stats, index.refresh_interval dans indices_settings). Le refresh_interval par défaut d'une seconde est un coût inutile sur un index d'ingestion massive dont les données ne sont pas lues immédiatement : recommande de l'allonger seulement si les statistiques de recherche (search_stats) montrent que l'index est peu interrogé. Signale tout throttling de merge, qui indique que le stockage ne suit pas. Vérifie si des pipelines d'ingestion ou des politiques d'enrichissement (ingest_pipelines, enrich_policies) ajoutent un coût par document, et signale les processeurs sans gestionnaire d'échec (on_failure), qui font perdre des documents silencieusement. Remonte tout compteur d'échec d'indexation non nul."
+    },
+    "recherche": {
+      "titre": "Performance de recherche",
+      "reference": "https://www.elastic.co/docs/deploy-manage/production-guidance/optimize-performance/search-speed",
+      "prompt": "Analyse le chemin de lecture. Croise le volume et la latence des requêtes (search_stats, search_stats_by_index) avec le nombre de segments par shard (indices_segments) et la mémoire disponible pour le cache du système de fichiers, déduite du heap et de la RAM (nodes_jvm_info, nodes_resources). La règle centrale du guide est que l'index chaud doit tenir dans le cache du système de fichiers : si le volume indexé dépasse largement la RAM restante après le heap, c'est le constat dominant et il conditionne tous les autres. Repère les déséquilibres de charge entre index (search_stats_by_index) et les index à forte latence. Signale les mappings coûteux (indices_mappings) : mapping dynamique laissé actif, champs text inutilement analysés, absence de keyword là où les agrégations en auraient besoin. Utilise nodes_hot_threads pour confirmer une hypothèse, jamais pour en fonder une."
+    },
+    "disque": {
+      "titre": "Utilisation disque",
+      "reference": "https://www.elastic.co/docs/deploy-manage/production-guidance/optimize-performance/disk-usage",
+      "prompt": "Évalue l'occupation et sa trajectoire. Croise l'espace total et utilisé (nodes_resources dans audit_infos.json, index_stats, indices_list) avec les seuils d'allocation relevés dans cluster_settings_with_defaults (cluster.routing.allocation.disk.watermark.low, .high, .flood_stage, par défaut 85, 90 et 95 %). Un nœud approchant le seuil haut est un constat MAJEUR quelle que soit la typologie, car le blocage en écriture est automatique et brutal. Cherche les causes de volume évitable dans les mappings (indices_mappings) : champs indexés sans être requis, doc_values et _source conservés là où ils ne servent pas, norms actives sur des champs non scorés. Vérifie si une politique de cycle de vie (ilm_policies) borne effectivement la croissance ou si des index grossissent sans terme. Rapporte l'espace récupérable par la fusion de segments quand write_merge_stats et indices_segments permettent de l'estimer."
+    },
+    "cycle_de_vie": {
+      "titre": "Cycle de vie et tiers de données",
+      "reference": "https://www.elastic.co/docs/manage-data/lifecycle/index-lifecycle-management",
+      "prompt": "Évalue la gestion du cycle de vie des données. Confronte les politiques déclarées (ilm_policies) aux index réellement présents (indices_list, indices_settings) : une politique définie mais rattachée à aucun index ne protège rien, et un index sans politique croît sans terme. Vérifie que les modèles (index_templates, component_templates) attachent bien une politique aux index qu'ils créent, car c'est le seul mécanisme qui couvre les index futurs. Signale les modèles hérités (legacy_index_templates) encore actifs : ils sont dépréciés et leur priorité peut entrer en conflit avec les modèles composables, ce qui produit des index mal configurés de façon difficile à diagnostiquer. Contrôle la cohérence des phases : une phase delete absente sur des données de log est un constat, une rétention plus longue que le besoin métier en est un autre. Rattache chaque écart à la typologie du cluster."
+    },
+    "sauvegarde": {
+      "titre": "Sauvegarde et restauration",
+      "reference": "https://www.elastic.co/docs/deploy-manage/tools/snapshot-and-restore",
+      "prompt": "Évalue la capacité réelle à restaurer. L'absence de dépôt déclaré (snapshot_repos) sur un cluster de PRODUCTION est le constat le plus grave que cet axe puisse produire : classe-le CRITIQUE. Confronte les politiques planifiées (slm_policies) aux instantanés effectivement présents (snapshots_list, snapshot_stats) : une politique qui ne produit rien est un faux filet de sécurité, plus dangereux que son absence car elle rassure à tort. Relève la date du dernier instantané réussi et calcule l'écart avec l'horodatage de l'audit ; compare-le à la fréquence annoncée par la politique. Remonte tout instantané en échec ou partiel, avec son motif. Vérifie que la rétention configurée est cohérente avec la fréquence, et que les index critiques identifiés par les autres axes entrent bien dans le périmètre des instantanés. Ne conclus jamais que les sauvegardes fonctionnent sur la seule existence d'une politique."
+    },
+    "securite": {
+      "titre": "Sécurisation du cluster",
+      "reference": "https://www.elastic.co/docs/deploy-manage/security",
+      "prompt": "Évalue la surface d'exposition et le respect du moindre privilège. Croise les comptes (security_users), les rôles (security_roles) et leurs affectations (security_role_mappings, security_privileges) pour identifier les comptes disposant de superuser ou all, les rôles accordant des privilèges d'écriture là où la lecture suffirait, et les comptes intégrés encore actifs. Relève les clés d'API (security_api_keys, api_keys_query) sans expiration ou inutilisées. Utilise authenticated_user pour rappeler sous quelle identité l'audit a été mené, car cela borne ce qui a pu être observé. Contrôle le chiffrement à partir de nodes_settings_security_perf et de tls_report.json : TLS actif sur les couches HTTP et transport, mode de vérification, et surtout date d'expiration des certificats relevés. Quand tls_report.json porte chain_source à leaf-only, déclare que la chaîne n'a pas pu être lue et limite le constat au certificat feuille au lieu de conclure sur la chaîne. Cet axe est le plus exposé aux refus de privilèges : si des commandes security_* ont échoué en 403, dis explicitement que le contrôle d'accès n'a pas pu être évalué et n'émets aucun constat rassurant sur ce périmètre."
+    },
+    "licence": {
+      "titre": "Licence et couverture fonctionnelle",
+      "reference": "https://www.elastic.co/subscriptions",
+      "prompt": "Établis ce que la licence autorise et ce qui en est réellement utilisé. Relève le type, le statut et la date d'expiration (license) et signale toute licence expirée ou proche de l'échéance, en pondérant par la typologie. Confronte les fonctionnalités disponibles (xpack_info) à leur usage effectif (xpack_usage) pour faire ressortir deux écarts symétriques : des fonctionnalités payées et inutilisées, et des usages qui deviendraient indisponibles en cas de rétrogradation de licence. Signale les fonctionnalités de sécurité ou de supervision désactivées alors que la licence les couvre, car c'est un manque gratuit. Vérifie la cohérence des greffons entre nœuds (nodes_plugins) : un greffon présent sur une partie seulement des nœuds produit des comportements non déterministes. Cet axe est le seul à ne pas s'appuyer sur le guide de mise en production, faute de chapitre correspondant : reste factuel et évite les recommandations d'ordre commercial."
+    }
+  },
   "commands": [
     {
       "name": "active_tasks",
-      "description": "List currently running tasks with details",
+      "description": "Tâches en cours d'exécution, avec leur détail",
       "command": "GET /_tasks?detailed=true&actions=*",
-      "prompt": "Identify long-running or blocked tasks that could indicate cluster pressure.",
+      "axes": ["dimensionnement", "recherche"],
+      "prompt": "Relève les tâches dont running_time_in_nanos est élevé, leur action, le nœud porteur et la description. Note les tâches annulables encore actives et les regroupements de tâches identiques. Ne conclus pas à une saturation : fournis ces relevés aux axes qui les corréleront.",
       "output_format": "json"
     },
     {
       "name": "api_keys_query",
-      "description": "Enumerate existing API keys for review",
+      "description": "Clés d'API existantes, tous propriétaires confondus",
       "command": "GET /_security/api_key?owner=false",
-      "prompt": "List API keys, owners, and expiration to spot unused or risky credentials.",
+      "axes": ["securite"],
+      "prompt": "Relève pour chaque clé son nom, son propriétaire, sa date de création, sa date d'expiration et son état d'invalidation. Signale les clés sans expiration et les clés expirées mais non invalidées. En cas d'échec, note le code et le motif : une réponse 400 « api keys are not enabled » signifie que le service est désactivé côté cluster et non que les privilèges manquent.",
       "output_format": "json"
     },
     {
       "name": "authenticated_user",
-      "description": "Show the authenticated user context",
+      "description": "Identité et rôles du compte utilisé pour l'audit",
       "command": "GET /_security/_authenticate",
-      "prompt": "Verify the identity and roles of the authenticated principal used for the audit.",
+      "axes": ["securite"],
+      "prompt": "Relève le nom du compte, ses rôles, son royaume d'authentification et son état d'activation. Ce relevé borne la portée de tout l'audit : il détermine ce qui a pu être observé et doit être cité chaque fois qu'une commande échoue pour cause de privilèges.",
       "output_format": "json"
     },
     {
       "name": "cluster_health",
-      "description": "Retrieve overall cluster health",
+      "description": "État de santé global du cluster",
       "command": "GET /_cluster/health",
-      "prompt": "Summarize cluster health and highlight red or yellow status causes.",
+      "axes": ["resilience", "dimensionnement"],
+      "prompt": "Relève le statut, le nombre de nœuds et de nœuds de données, les shards actifs, en relocalisation, en initialisation et non assignés, ainsi que le pourcentage d'activité. Un statut jaune ou rouge doit être rapporté avec le décompte exact de shards concernés ; ne cherche pas la cause ici, les autres artefacts la portent.",
       "output_format": "json"
     },
     {
       "name": "cluster_settings_with_defaults",
-      "description": "Cluster settings including defaults",
+      "description": "Paramètres du cluster, valeurs par défaut incluses",
       "command": "GET /_cluster/settings?include_defaults=true",
-      "prompt": "Spot non-default cluster settings that affect performance, resilience, or security.",
+      "axes": ["resilience", "dimensionnement", "disque", "indexation"],
+      "prompt": "Distingue systématiquement les blocs persistent et transient des valeurs defaults : seuls les deux premiers sont des choix explicites de l'exploitant. Relève les seuils d'allocation disque (cluster.routing.allocation.disk.watermark.*), les règles de filtrage et de répartition (allocation.awareness, allocation.enable), les limiteurs de circuit (indices.breaker.*) et toute valeur de destination de journalisation lente. Un paramètre transient est perdu au redémarrage : signale-le comme tel.",
       "output_format": "json"
     },
     {
       "name": "cluster_state",
-      "description": "Cluster state snapshot",
+      "description": "Instantané de l'état interne du cluster",
       "command": "GET /_cluster/state",
-      "prompt": "Review metadata for indices, nodes, and routing to detect anomalies.",
+      "axes": ["resilience", "shards"],
+      "prompt": "Relève la table de routage : pour chaque shard non assigné, extrais la raison contenue dans unassigned_info. Note les index en lecture seule ou bloqués, les nœuds présents dans l'état et le nœud maître élu. Cet artefact est volumineux : limite-toi aux anomalies et aux métadonnées de routage, sans recopier la totalité des mappings.",
       "output_format": "json"
     },
     {
       "name": "cluster_stats",
-      "description": "Cluster-wide statistics",
+      "description": "Statistiques agrégées du cluster",
       "command": "GET /_cluster/stats",
-      "prompt": "Capture global metrics (docs, storage, ingest) for sizing and trend analysis.",
+      "axes": ["dimensionnement", "disque", "shards"],
+      "prompt": "Relève le nombre d'index, le total de shards primaires et de replicas, le nombre de documents, la taille du stockage, la mémoire heap totale et utilisée du cluster, ainsi que le décompte de nœuds par rôle. Ces chiffres sont les dénominateurs de la plupart des ratios calculés par les axes : reporte-les avec leur unité, sans arrondi.",
       "output_format": "json"
     },
     {
       "name": "component_templates",
-      "description": "List component templates",
+      "description": "Modèles de composants réutilisables",
       "command": "GET /_component_template",
-      "prompt": "Enumerate reusable template components that affect index defaults.",
+      "axes": ["cycle_de_vie", "indexation"],
+      "prompt": "Relève pour chaque modèle de composant les paramètres et fragments de mapping qu'il définit, en particulier le nombre de shards et de replicas, le refresh_interval et la politique de cycle de vie associée. Note les modèles définis mais référencés par aucun modèle d'index.",
       "output_format": "json"
     },
     {
       "name": "enrich_policies",
-      "description": "Configured enrich policies",
+      "description": "Politiques d'enrichissement configurées",
       "command": "GET /_enrich/policy",
-      "prompt": "Review enrich policies to validate sources, schedules, and security.",
+      "axes": ["indexation"],
+      "prompt": "Relève pour chaque politique son type, ses index sources, son champ de correspondance et les champs restitués. Note les politiques déclarées mais jamais exécutées, dont l'index d'exécution est absent. En cas d'échec 403, précise que le privilège manage_enrich est requis en 7.x.",
       "output_format": "json"
     },
     {
       "name": "ilm_policies",
-      "description": "Index Lifecycle Management policies",
+      "description": "Politiques de gestion du cycle de vie des index",
       "command": "GET /_ilm/policy",
-      "prompt": "List ILM policies and phases to ensure data retention aligns with requirements.",
+      "axes": ["cycle_de_vie", "disque"],
+      "prompt": "Relève pour chaque politique ses phases, leurs seuils de déclenchement (âge, taille, nombre de documents) et les actions associées : rollover, shrink, forcemerge, freeze, delete. Note l'absence de phase delete et les politiques dont aucune phase ne borne la croissance. Relève le nombre d'index rattachés quand l'information est disponible.",
       "output_format": "json"
     },
     {
       "name": "index_templates",
-      "description": "Composable index templates",
+      "description": "Modèles d'index composables",
       "command": "GET /_index_template",
-      "prompt": "Identify index templates and their priority/order for mappings and settings.",
+      "axes": ["cycle_de_vie", "shards"],
+      "prompt": "Relève pour chaque modèle ses motifs d'index, sa priorité, les modèles de composants qu'il compose, le nombre de shards et de replicas qu'il impose et la politique de cycle de vie qu'il attache. Les valeurs relevées ici décrivent les index à venir : distingue-les de la configuration des index existants.",
       "output_format": "json"
     },
     {
       "name": "indices_mappings",
-      "description": "Mappings for all indices",
+      "description": "Mappings de l'ensemble des index",
       "command": "GET /_mapping",
-      "prompt": "Capture field mappings to detect risky field types or dynamic mapping usage.",
+      "axes": ["disque", "recherche", "indexation"],
+      "prompt": "Relève le nombre de champs par index, l'état du mapping dynamique, la présence de champs text sans sous-champ keyword et inversement, les champs indexés mais jamais requis si l'information est déductible, et l'usage de types coûteux (nested, join, dense_vector). Note la désactivation éventuelle de _source ou de norms. Sur un cluster volumineux, agrège plutôt que d'énumérer index par index.",
       "output_format": "json"
     },
     {
       "name": "indices_segments",
-      "description": "Segment details per shard",
+      "description": "Détail des segments par shard",
       "command": "GET /_segments",
-      "prompt": "Review segment counts and sizes to evaluate merge efficiency and search impact.",
+      "axes": ["recherche", "indexation", "disque"],
+      "prompt": "Relève le nombre de segments par shard, leur taille, la mémoire qu'ils consomment et la proportion de documents supprimés non encore purgés. Un shard portant un très grand nombre de petits segments est un relevé notable pour l'axe recherche. Agrège par index plutôt que de détailler chaque segment.",
       "output_format": "json"
     },
     {
       "name": "indices_settings",
-      "description": "Index settings across the cluster",
+      "description": "Paramètres des index du cluster",
       "command": "GET /_settings",
-      "prompt": "Inspect index-level settings such as replicas, refresh intervals, and slowlogs.",
+      "axes": ["resilience", "indexation", "shards", "recherche"],
+      "prompt": "Relève par index le number_of_shards, le number_of_replicas, le refresh_interval, les paramètres de translog, les blocages en lecture ou écriture, la politique de cycle de vie rattachée et les seuils de mapping. Le number_of_replicas est le relevé le plus structurant de cet artefact : reporte-le pour chaque index, sans exception, car l'axe résilience s'en sert directement.",
       "output_format": "json"
     },
     {
       "name": "index_stats",
-      "description": "Index statistics overview",
+      "description": "Statistiques d'utilisation des index",
       "command": "GET /_stats",
-      "prompt": "Gather index statistics for documents, store size, and indexing/search counts.",
+      "axes": ["dimensionnement", "disque", "shards"],
+      "prompt": "Relève par index le nombre de documents, le nombre de documents supprimés, la taille du stockage total et primaire, et les compteurs d'indexation et de recherche. La différence entre taille totale et taille primaire donne le coût réel des replicas : reporte-la, elle sert aux arbitrages de l'axe disque.",
       "output_format": "json"
     },
     {
       "name": "ingest_pipelines",
-      "description": "Defined ingest pipelines",
+      "description": "Pipelines d'ingestion définis",
       "command": "GET /_ingest/pipeline",
-      "prompt": "List ingest pipelines to verify processors, failure handlers, and versioning.",
+      "axes": ["indexation"],
+      "prompt": "Relève pour chaque pipeline la liste ordonnée de ses processeurs, la présence d'un gestionnaire on_failure global ou par processeur, et les processeurs réputés coûteux (grok, script, geoip, enrich). Une réponse 404 à corps vide signifie qu'aucun pipeline n'est défini : ce n'est pas une erreur, note-le comme tel.",
       "output_format": "json"
     },
     {
       "name": "legacy_index_templates",
-      "description": "Legacy index templates",
+      "description": "Modèles d'index hérités",
       "command": "GET /_template",
-      "prompt": "Capture legacy templates to plan migration to composable templates and spot overrides.",
+      "axes": ["cycle_de_vie"],
+      "prompt": "Relève les modèles hérités encore présents, leurs motifs d'index, leur ordre et les paramètres qu'ils imposent. Signale tout chevauchement de motif avec un modèle composable, car la résolution de priorité entre les deux mécanismes est une source classique d'index mal configurés.",
       "output_format": "json"
     },
     {
       "name": "license",
-      "description": "License information",
+      "description": "Informations de licence",
       "command": "GET /_license",
-      "prompt": "Note license type, status, and expiry to anticipate feature availability.",
+      "axes": ["licence"],
+      "prompt": "Relève le type de licence, son statut, sa date d'expiration et le nombre de nœuds couverts. Calcule le nombre de jours restants par rapport à l'horodatage de l'audit.",
       "output_format": "json"
     },
     {
       "name": "nodes_jvm_info",
-      "description": "JVM details for nodes",
+      "description": "Configuration JVM des nœuds",
       "command": "GET /_nodes/jvm",
-      "prompt": "Summarize JVM versions and memory settings to ensure consistency across nodes.",
+      "axes": ["dimensionnement", "recherche"],
+      "prompt": "Relève par nœud la taille de heap maximale, la version de la JVM, le ramasse-miettes utilisé et les options de démarrage notables. Signale toute divergence de heap ou de version entre nœuds. Ce relevé n'a de sens qu'une fois croisé avec la RAM de la machine : ne juge pas le heap isolément.",
       "output_format": "json"
     },
     {
       "name": "nodes_plugins",
-      "description": "Installed plugins per node",
+      "description": "Greffons installés par nœud",
       "command": "GET /_nodes/plugins",
-      "prompt": "List plugins and versions to detect unsupported or inconsistent installations.",
+      "axes": ["dimensionnement", "licence"],
+      "prompt": "Relève par nœud la liste des greffons et des modules, avec leur version. Signale tout greffon présent sur certains nœuds seulement, ou dont la version diffère d'un nœud à l'autre.",
       "output_format": "json"
     },
     {
       "name": "nodes_settings",
-      "description": "Node settings",
+      "description": "Paramètres de configuration des nœuds",
       "command": "GET /_nodes/settings",
-      "prompt": "Review node settings for discovery, networking, and resource controls.",
+      "axes": ["resilience", "dimensionnement", "indexation"],
+      "prompt": "Relève par nœud ses rôles, les paramètres de découverte (discovery.seed_hosts, cluster.initial_master_nodes), la configuration réseau, les attributs d'awareness, le verrouillage mémoire (bootstrap.memory_lock) et le dimensionnement des files d'exécution. Les rôles de nœud et les paramètres de découverte sont les relevés dont l'axe résilience dépend le plus directement.",
       "output_format": "json"
     },
     {
       "name": "nodes_settings_security_perf",
-      "description": "Node settings focused on security and performance",
+      "description": "Paramètres de sécurité et de performance des nœuds",
       "command": "GET /_nodes/settings?flat_settings=true&filter_path=**.security*,**.xpack.security*,**.performance*,**.indices.breaker*",
-      "prompt": "Highlight security/performance-related node settings such as TLS, authc realms, and circuit breakers.",
+      "axes": ["securite", "dimensionnement"],
+      "prompt": "Relève l'activation de la sécurité (xpack.security.enabled), l'état de TLS sur la couche HTTP et sur la couche transport, le mode de vérification des certificats, les royaumes d'authentification configurés et les seuils des limiteurs de circuit. L'écart entre TLS transport actif et TLS HTTP inactif est un relevé important : reporte les deux séparément, ils n'ont pas la même portée.",
       "output_format": "json"
     },
     {
       "name": "search_stats",
-      "description": "Global search statistics",
+      "description": "Statistiques globales de recherche",
       "command": "GET /_stats/search",
-      "prompt": "Summarize search request volumes and latencies to spot hotspots.",
+      "axes": ["recherche"],
+      "prompt": "Relève le nombre total de requêtes, le temps cumulé passé en phase query et en phase fetch, le nombre de requêtes en cours et les scroll ouverts. Calcule la latence moyenne par requête à partir du temps cumulé et du décompte, et précise qu'il s'agit d'une moyenne depuis le démarrage, non d'un instantané.",
       "output_format": "json"
     },
     {
       "name": "search_stats_by_index",
-      "description": "Search statistics per index",
+      "description": "Statistiques de recherche par index",
       "command": "GET /_stats/search?level=indices",
-      "prompt": "Compare search load and latency across indices to find imbalances.",
+      "axes": ["recherche", "shards"],
+      "prompt": "Relève par index le nombre de requêtes et la latence moyenne, puis classe les index par charge décroissante. L'écart entre les index les plus et les moins sollicités est le relevé utile : il permet d'identifier les index dont le dimensionnement ne correspond pas à leur usage réel.",
       "output_format": "json"
     },
     {
       "name": "security_api_keys",
-      "description": "List security API keys",
+      "description": "Clés d'API du compte courant",
       "command": "GET /_security/api_key",
-      "prompt": "Capture API keys, creation, and expiration for audit and cleanup planning.",
+      "axes": ["securite"],
+      "prompt": "Relève les clés visibles, leur date de création, leur expiration et leur état. Ce relevé recoupe api_keys_query avec une portée plus restreinte : signale explicitement toute divergence entre les deux, elle traduit une différence de privilèges.",
       "output_format": "json"
     },
     {
       "name": "security_privileges",
-      "description": "Registered security privileges",
+      "description": "Privilèges applicatifs enregistrés",
       "command": "GET /_security/privilege",
-      "prompt": "List cluster/index/application privileges to understand available permissions.",
+      "axes": ["securite"],
+      "prompt": "Relève les privilèges applicatifs déclarés, leurs applications et les actions qu'ils recouvrent. Une réponse vide est normale sur un cluster sans application tierce intégrée : note-le sans en faire un constat.",
       "output_format": "json"
     },
     {
       "name": "security_role_mappings",
-      "description": "Role mappings",
+      "description": "Correspondances entre identités externes et rôles",
       "command": "GET /_security/role_mapping",
-      "prompt": "Review role mappings to verify external identities and role assignments.",
+      "axes": ["securite"],
+      "prompt": "Relève chaque correspondance, sa règle, les rôles accordés et son état d'activation. Signale les règles trop larges, notamment celles qui accordent un rôle sur la seule appartenance à un royaume, et les correspondances désactivées mais conservées.",
       "output_format": "json"
     },
     {
       "name": "security_roles",
-      "description": "Defined security roles",
+      "description": "Rôles de sécurité définis",
       "command": "GET /_security/role",
-      "prompt": "List roles and privileges to check least-privilege adherence.",
+      "axes": ["securite"],
+      "prompt": "Relève pour chaque rôle ses privilèges de cluster, ses privilèges d'index avec les motifs concernés, et ses éventuelles restrictions par document ou par champ. Distingue les rôles intégrés des rôles créés sur mesure. Signale les rôles accordant all ou manage_security, et ceux dont les motifs d'index sont en joker sans restriction.",
       "output_format": "json"
     },
     {
       "name": "security_users",
-      "description": "Configured security users",
+      "description": "Comptes utilisateurs configurés",
       "command": "GET /_security/user",
-      "prompt": "Enumerate users, roles, and metadata for lifecycle and access reviews.",
+      "axes": ["securite"],
+      "prompt": "Relève chaque compte, ses rôles, son état d'activation et ses métadonnées. Distingue les comptes intégrés des comptes créés. Signale les comptes disposant de superuser, les comptes actifs sans rôle utile, et les comptes de service partagés lorsque la nomenclature le laisse voir.",
       "output_format": "json"
     },
     {
       "name": "security_users_roles_mappings",
-      "description": "User privileges overview",
+      "description": "Privilèges effectifs du compte d'audit",
       "command": "GET /_security/user/_privileges",
-      "prompt": "Summarize the effective privileges granted to the authenticated user.",
+      "axes": ["securite"],
+      "prompt": "Relève les privilèges effectivement accordés au compte utilisé pour l'audit. Ce relevé sert à qualifier les angles morts : mets-le en regard des commandes ayant échoué en 403 pour distinguer un privilège manquant d'une fonctionnalité désactivée.",
       "output_format": "json"
     },
     {
       "name": "slm_policies",
-      "description": "Snapshot lifecycle management policies",
+      "description": "Politiques de sauvegarde planifiée",
       "command": "GET /_slm/policy",
-      "prompt": "Review SLM policies to ensure snapshot schedules and retention are adequate.",
+      "axes": ["sauvegarde"],
+      "prompt": "Relève pour chaque politique sa planification, son dépôt de destination, les index couverts, sa configuration de rétention, ainsi que les compteurs d'exécutions réussies et échouées et la date de la dernière exécution. Une politique dont le compteur de succès est nul est le relevé le plus important de cet artefact.",
       "output_format": "json"
     },
     {
       "name": "snapshot_repos",
-      "description": "Registered snapshot repositories",
+      "description": "Dépôts de sauvegarde enregistrés",
       "command": "GET /_snapshot",
-      "prompt": "List snapshot repositories and types to verify resilience and access.",
+      "axes": ["sauvegarde"],
+      "prompt": "Relève chaque dépôt, son type, son emplacement et ses options de compression ou de chiffrement. Une réponse vide signifie qu'aucune sauvegarde n'est possible : c'est un relevé de premier ordre, reporte-le sans ambiguïté.",
       "output_format": "json"
     },
     {
       "name": "snapshots_list",
-      "description": "List snapshots across repositories",
+      "description": "Instantanés présents dans les dépôts",
       "command": "GET /_snapshot/_all",
-      "prompt": "Summarize snapshot counts and latest states to check backup freshness.",
+      "axes": ["sauvegarde"],
+      "prompt": "Relève les instantanés existants avec leur date de début et de fin, leur état, les index couverts et les shards en échec. Identifie la date du dernier instantané réussi et calcule son ancienneté par rapport à l'horodatage de l'audit.",
       "output_format": "json"
     },
     {
       "name": "snapshot_stats",
-      "description": "Snapshot status and statistics",
+      "description": "État et statistiques des opérations de sauvegarde",
       "command": "GET /_snapshot/_all/_status",
-      "prompt": "Review ongoing or recent snapshot operations for duration and failures.",
+      "axes": ["sauvegarde"],
+      "prompt": "Relève les opérations en cours ou récentes, leur durée, le volume traité et le détail des shards en échec. Rapporte tout instantané partiel avec la liste des index concernés : un instantané partiel ne garantit pas la restauration.",
       "output_format": "json"
     },
     {
       "name": "write_indexing_stats",
-      "description": "Indexing stats per node",
+      "description": "Statistiques d'indexation par nœud",
       "command": "GET /_nodes/stats/indices/indexing",
-      "prompt": "Check indexing throughput and failure counts to detect ingest bottlenecks, and compare the per-node figures to find skew or stuck nodes.",
+      "axes": ["indexation"],
+      "prompt": "Relève par nœud le nombre de documents indexés, le temps cumulé d'indexation, le nombre d'opérations en cours, les suppressions et surtout le compteur d'échecs. Calcule la latence moyenne par document et compare les nœuds entre eux : un déséquilibre marqué indique une répartition de shards inadaptée.",
       "output_format": "json"
     },
     {
       "name": "write_merge_stats",
-      "description": "Segment merge statistics",
+      "description": "Statistiques de fusion de segments",
       "command": "GET /_nodes/stats/indices/merge",
-      "prompt": "Evaluate merge activity and throttling that may affect write performance.",
+      "axes": ["indexation", "disque"],
+      "prompt": "Relève par nœud le nombre de fusions en cours et cumulées, le temps total de fusion, le volume traité et le temps de throttling. Un temps de throttling non nul signifie que le stockage limite l'écriture : c'est le relevé décisif de cet artefact.",
       "output_format": "json"
     },
     {
       "name": "write_refresh_stats",
-      "description": "Refresh statistics",
+      "description": "Statistiques de rafraîchissement",
       "command": "GET /_nodes/stats/indices/refresh",
-      "prompt": "Review refresh frequency and latency to balance write throughput and search freshness.",
+      "axes": ["indexation", "recherche"],
+      "prompt": "Relève par nœud le nombre de rafraîchissements et le temps cumulé qu'ils consomment. Rapporte ce temps à la durée d'activité du nœud pour estimer la part de ressources dépensée à rendre les documents visibles, arbitrage qui oppose directement fraîcheur de recherche et débit d'écriture.",
       "output_format": "json"
     },
     {
       "name": "xpack_info",
-      "description": "X-Pack feature info",
+      "description": "Fonctionnalités X-Pack disponibles",
       "command": "GET /_xpack",
-      "prompt": "Summarize available X-Pack features and license-dependent capabilities.",
+      "axes": ["licence"],
+      "prompt": "Relève pour chaque fonctionnalité son état d'activation et sa disponibilité au regard de la licence. Distingue nettement disponible et activé : une fonctionnalité couverte par la licence mais désactivée est un relevé distinct d'une fonctionnalité non couverte.",
       "output_format": "json"
     },
     {
       "name": "xpack_usage",
-      "description": "X-Pack feature usage statistics",
+      "description": "Usage effectif des fonctionnalités X-Pack",
       "command": "GET /_xpack/usage",
-      "prompt": "Review feature usage to align licensing with actual consumption.",
+      "axes": ["licence"],
+      "prompt": "Relève l'usage réel de chaque fonctionnalité : décomptes d'objets, de tâches ou de politiques. Confronté à xpack_info, ce relevé fait apparaître les fonctionnalités activées mais inutilisées et celles utilisées qui dépendent du niveau de licence courant.",
       "output_format": "json"
     },
     {
       "name": "shards_list",
-      "description": "List shards with allocation details",
+      "description": "Liste des shards et de leur allocation",
       "command": "GET /_cat/shards?v",
-      "prompt": "Identify unassigned or relocating shards and distribution across nodes.",
+      "axes": ["shards", "resilience"],
+      "prompt": "Relève pour chaque shard son index, son numéro, son type primaire ou replica, son état, le nœud porteur, sa taille et son nombre de documents. Compte les shards par nœud et par index, et repère les états autres que STARTED. La distribution par nœud est le relevé central : un déséquilibre marqué alimente à la fois l'axe shards et l'axe résilience.",
       "output_format": "text"
     },
     {
       "name": "nodes_infos",
-      "description": "Node information overview",
+      "description": "Vue d'ensemble des nœuds",
       "command": "GET /_cat/nodes?v",
-      "prompt": "List nodes with roles and resource stats for quick topology insight.",
+      "axes": ["dimensionnement", "resilience"],
+      "prompt": "Relève pour chaque nœud son nom, ses rôles, son pourcentage de heap utilisé, sa charge système, son pourcentage de RAM et son statut de maître. Identifie le nœud maître courant et compte les nœuds éligibles maître : ce décompte conditionne directement le jugement de résilience.",
       "output_format": "text"
     },
     {
       "name": "nodes_hot_threads",
-      "description": "Node hot threads",
+      "description": "Piles d'exécution des threads les plus actifs",
       "command": "GET /_nodes/hot_threads",
-      "prompt": "Capture hot thread stacks to diagnose CPU-intensive operations.",
+      "axes": ["dimensionnement", "recherche", "indexation"],
+      "prompt": "Relève les threads consommant le plus de CPU, leur nœud, leur pourcentage d'occupation et la nature de leur pile : recherche, indexation, fusion, ramasse-miettes. Cet artefact est un instantané de quelques secondes : présente-le comme un indice à corroborer, jamais comme une mesure représentative de la charge.",
       "output_format": "text"
     },
     {
       "name": "indices_list",
-      "description": "List indices with health and size",
+      "description": "Liste des index avec santé et volumétrie",
       "command": "GET /_cat/indices?v",
-      "prompt": "Provide a concise view of index health, status, and sizes.",
+      "axes": ["shards", "disque", "cycle_de_vie"],
+      "prompt": "Relève pour chaque index sa santé, son état, son nombre de shards primaires et de replicas, son nombre de documents, ses documents supprimés et sa taille totale et primaire. Classe les index par taille décroissante et calcule la taille moyenne par shard primaire : c'est l'entrée directe du calcul de dimensionnement des shards.",
       "output_format": "text"
     }
   ]
