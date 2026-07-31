@@ -241,16 +241,9 @@
     },
     {
       "name": "write_indexing_stats",
-      "description": "Indexing stats across nodes",
+      "description": "Indexing stats per node",
       "command": "GET /_nodes/stats/indices/indexing",
-      "prompt": "Check indexing throughput and failure counts to detect ingest bottlenecks.",
-      "output_format": "json"
-    },
-    {
-      "name": "write_indexing_stats_by_node",
-      "description": "Indexing stats by node",
-      "command": "GET /_nodes/stats/indexing",
-      "prompt": "Compare indexing performance per node to find skew or stuck nodes.",
+      "prompt": "Check indexing throughput and failure counts to detect ingest bottlenecks, and compare the per-node figures to find skew or stuck nodes.",
       "output_format": "json"
     },
     {
