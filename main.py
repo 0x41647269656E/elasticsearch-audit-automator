@@ -16,6 +16,21 @@ import paramiko
 import requests
 from dotenv import load_dotenv
 
+FORWARD_BUFFER_SIZE = 32768
+
+
+def forward_stream(source: Any, dest: Any, buffer_size: int = FORWARD_BUFFER_SIZE) -> bool:
+    """Move one chunk from source to dest; False once the source is exhausted.
+
+    paramiko's Channel.send may accept only part of the payload, so sendall is
+    required: audit responses such as _nodes/stats dwarf a single send window.
+    """
+    data = source.recv(buffer_size)
+    if not data:
+        return False
+    dest.sendall(data)
+    return True
+
 
 class ForwardServer(socketserver.ThreadingTCPServer):
     daemon_threads = True
@@ -45,16 +60,10 @@ class ForwardHandler(socketserver.BaseRequestHandler):
         try:
             while True:
                 r, _, _ = select.select([self.request, chan], [], [])
-                if self.request in r:
-                    data = self.request.recv(1024)
-                    if len(data) == 0:
-                        break
-                    chan.send(data)
-                if chan in r:
-                    data = chan.recv(1024)
-                    if len(data) == 0:
-                        break
-                    self.request.send(data)
+                if self.request in r and not forward_stream(self.request, chan):
+                    break
+                if chan in r and not forward_stream(chan, self.request):
+                    break
         finally:
             chan.close()
             self.request.close()
@@ -105,10 +114,17 @@ class SshTunnel:
         return self
 
     def _build_handler(self, transport: paramiko.Transport):
+        # Bind through differently-named locals: a class body resolves names it
+        # also assigns against the class/global namespace, never the enclosing
+        # function, so `transport = transport` would raise NameError.
+        ssh_transport = transport
+        target_host = self.remote_host
+        target_port = self.remote_port
+
         class Handler(ForwardHandler):
-            transport = transport
-            remote_host = self.remote_host
-            remote_port = self.remote_port
+            transport = ssh_transport
+            remote_host = target_host
+            remote_port = target_port
 
         return Handler
 
