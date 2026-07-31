@@ -1,3 +1,11 @@
 test/*/certs/*
 .venv/*
 .env
+
+# Collected audit output: contains cluster security data (users, roles,
+# role mappings, API key metadata). Never commit a client's audit.
+data/*
+!data/.gitkeep
+
+__pycache__/
+*.py[cod]
