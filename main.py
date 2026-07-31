@@ -8,6 +8,7 @@ import socketserver
 import subprocess
 import sys
 import threading
+import time
 import ssl
 import tempfile
 from pathlib import Path
@@ -250,7 +251,7 @@ def ensure_data_dir() -> Path:
 
 
 def create_audit_dir(base_dir: Path, client: str, cluster: str, host: str) -> Path:
-    timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
+    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
     cluster_part = cluster or host
     safe_cluster = cluster_part.replace("/", "-")
     name = f"{timestamp}-{client}-{safe_cluster}"
@@ -271,14 +272,31 @@ def execute_request(
     return response
 
 
-def save_output(audit_dir: Path, command_name: str, output_format: str, content: Any) -> None:
-    output_path = audit_dir / f"{command_name}.{ 'json' if output_format == 'json' else 'txt'}"
+def save_output(
+    audit_dir: Path,
+    command_name: str,
+    output_format: str,
+    content: Any,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Persist one command's output, with its collection metadata when known.
+
+    JSON artefacts carry the metadata inline under `_audit`, with the untouched
+    Elasticsearch response under `_data`. Text artefacts stay byte-for-byte what
+    Elasticsearch returned — anything parsing _cat output must keep working — so
+    their metadata goes to a `.meta.json` sidecar instead.
+    """
     if output_format == "json":
-        with open(output_path, "w", encoding="utf-8") as file:
-            json.dump(content, file, indent=2)
-    else:
-        with open(output_path, "w", encoding="utf-8") as file:
-            file.write(str(content))
+        payload = {"_audit": metadata, "_data": content} if metadata else content
+        with open(audit_dir / f"{command_name}.json", "w", encoding="utf-8") as file:
+            json.dump(payload, file, indent=2)
+        return
+
+    with open(audit_dir / f"{command_name}.txt", "w", encoding="utf-8") as file:
+        file.write(str(content))
+    if metadata:
+        with open(audit_dir / f"{command_name}.meta.json", "w", encoding="utf-8") as file:
+            json.dump(metadata, file, indent=2)
 
 
 def run_commands(
@@ -288,6 +306,7 @@ def run_commands(
     verify_tls: bool | str,
     audit_dir: Path,
     timeout: float = DEFAULT_REQUEST_TIMEOUT,
+    node_name: Optional[str] = None,
 ) -> Dict[str, List[str]]:
     executed: List[str] = []
     failed: List[str] = []
@@ -303,22 +322,39 @@ def run_commands(
             method, path = "GET", command_str
         url = f"{base_url}{path}"
         print(f"Executing {name}: {method} {path}")
+
+        # The report states when each command ran and which node answered it,
+        # so time every call rather than relying on the audit-wide timestamp.
+        started_at = datetime.datetime.now(datetime.timezone.utc)
+        started_perf = time.perf_counter()
+
+        def collected(status: Optional[int]) -> Dict[str, Any]:
+            return {
+                "node": node_name,
+                "at": started_at.isoformat(),
+                "command": f"{method} {path}",
+                "status": status,
+                "duration_ms": int((time.perf_counter() - started_perf) * 1000),
+            }
+
         try:
             response = execute_request(session, method, url, verify_tls, timeout)
             if response.ok:
                 content = response.json() if output_format == "json" else response.text
-                save_output(audit_dir, name, output_format, content)
+                save_output(audit_dir, name, output_format, content, collected(response.status_code))
                 executed.append(name)
             else:
                 failed.append(name)
                 error_msg = f"Command {name} failed with status {response.status_code}: {response.text}"
                 errors.append(error_msg)
-                save_output(audit_dir, f"{name}-error", "text", error_msg)
+                save_output(
+                    audit_dir, f"{name}-error", "text", error_msg, collected(response.status_code)
+                )
         except Exception as exc:
             failed.append(name)
             error_msg = f"Command {name} raised exception: {exc}"
             errors.append(error_msg)
-            save_output(audit_dir, f"{name}-error", "text", error_msg)
+            save_output(audit_dir, f"{name}-error", "text", error_msg, collected(None))
 
     if errors:
         with open(audit_dir / "errors.log", "w", encoding="utf-8") as log_file:
@@ -485,6 +521,27 @@ def detect_cluster_name(
     raise RuntimeError("Unable to determine Elasticsearch cluster name") from health_error
 
 
+def detect_node_name(
+    session: requests.Session,
+    base_url: str,
+    verify_tls: bool | str,
+    timeout: float = DEFAULT_REQUEST_TIMEOUT,
+) -> Optional[str]:
+    """Return the name of the node answering on this endpoint, or None.
+
+    The report names the node each command was run against. This is a nicety:
+    losing it must never abort a collection, so every failure returns None.
+    """
+    try:
+        root = execute_request(session, "GET", f"{base_url}/", verify_tls, timeout)
+        if root.ok:
+            name = root.json().get("name")
+            return str(name) if name else None
+    except Exception:
+        return None
+    return None
+
+
 def collect_cluster_details(
     session: requests.Session,
     base_url: str,
@@ -539,10 +596,14 @@ def write_audit_info(
     command_results: Dict[str, List[str]],
     node_details: Dict[str, Any],
     tls_report: Optional[str] = None,
+    node_name: Optional[str] = None,
+    endpoint: Optional[str] = None,
 ) -> None:
     audit_info = {
         "connection_method": connection_method,
-        "timestamp": datetime.datetime.utcnow().isoformat(),
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "node_name": node_name,
+        "endpoint": endpoint,
         "cluster_name": cluster_name,
         "cluster_typology": cluster_typology,
         "client_name": client_name,
@@ -608,7 +669,8 @@ def main() -> None:
         ) as tunnel:
             local_base_url = build_base_url(config, tunnel.local_port)
             cluster_name = detect_cluster_name(session, local_base_url, verify_setting, timeout)
-            print(f"Detected cluster name: {cluster_name}")
+            node_name = detect_node_name(session, local_base_url, verify_setting, timeout)
+            print(f"Detected cluster name: {cluster_name} (node: {node_name or 'unknown'})")
             node_details = collect_cluster_details(session, local_base_url, verify_setting, timeout)
             audit_dir = create_audit_dir(data_dir, config["client_name"], cluster_name, config["host"])
             tls_report = persist_tls_report(audit_dir, config, local_port=tunnel.local_port)
@@ -619,6 +681,7 @@ def main() -> None:
                 verify_setting,
                 audit_dir,
                 timeout,
+                node_name,
             )
             write_audit_info(
                 audit_dir,
@@ -630,11 +693,14 @@ def main() -> None:
                 results,
                 node_details,
                 tls_report,
+                node_name,
+                build_base_url(config),
             )
             prompt_analysis(audit_dir)
     else:
         cluster_name = detect_cluster_name(session, base_url, verify_setting, timeout)
-        print(f"Detected cluster name: {cluster_name}")
+        node_name = detect_node_name(session, base_url, verify_setting, timeout)
+        print(f"Detected cluster name: {cluster_name} (node: {node_name or 'unknown'})")
         node_details = collect_cluster_details(session, base_url, verify_setting, timeout)
         audit_dir = create_audit_dir(data_dir, config["client_name"], cluster_name, config["host"])
         tls_report = persist_tls_report(audit_dir, config)
@@ -645,6 +711,7 @@ def main() -> None:
             verify_setting,
             audit_dir,
             timeout,
+            node_name,
         )
         write_audit_info(
             audit_dir,
@@ -656,6 +723,8 @@ def main() -> None:
             results,
             node_details,
             tls_report,
+            node_name,
+            base_url,
         )
         prompt_analysis(audit_dir)
 
