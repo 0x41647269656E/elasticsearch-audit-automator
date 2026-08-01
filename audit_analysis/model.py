@@ -34,6 +34,30 @@ class ResultatAxe(BaseModel):
     angles_morts: List[str] = Field(default_factory=list)
 
 
+@dataclass
+class Usage:
+    """Consommation d'un appel, telle que l'API la rapporte.
+
+    `output_tokens` inclut les jetons de raisonnement : c'est de les avoir
+    ignorés qui avait fait sous-estimer le coût du premier audit.
+    """
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_input_tokens: int = 0
+    cache_creation_input_tokens: int = 0
+
+    def __add__(self, other: "Usage") -> "Usage":
+        return Usage(
+            input_tokens=self.input_tokens + other.input_tokens,
+            output_tokens=self.output_tokens + other.output_tokens,
+            cache_read_input_tokens=self.cache_read_input_tokens + other.cache_read_input_tokens,
+            cache_creation_input_tokens=(
+                self.cache_creation_input_tokens + other.cache_creation_input_tokens
+            ),
+        )
+
+
 def _tighten(node: Any) -> None:
     if isinstance(node, dict):
         if node.get("type") == "object":
@@ -75,6 +99,8 @@ class AxeAnalyse:
     erreur: Optional[str] = None
     agregations: List[str] = field(default_factory=list)
     extraits_invérifiables: List[str] = field(default_factory=list)
+    usage: Optional["Usage"] = None
+    duree_s: float = 0.0
 
     @property
     def constats(self) -> List[Constat]:

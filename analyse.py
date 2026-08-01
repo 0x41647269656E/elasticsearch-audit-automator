@@ -13,10 +13,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from audit_analysis import analysis, loading, rendering
+from audit_analysis import analysis, loading, rendering, usage
 from audit_analysis.client import AnthropicCaller, resolve_credentials
-
-RAPPORT = "rapport.md"
 
 
 def load_credentials(env_file="./.env") -> None:
@@ -52,6 +50,12 @@ def parse_args() -> argparse.Namespace:
         help="Désactive le repli serveur en cas de refus du modèle",
     )
     parser.add_argument(
+        "--axe",
+        default=None,
+        help="Rejoue l'analyse sur ce seul axe ; écrit à côté du rapport complet, "
+             "sans l'écraser",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="N'appelle pas le modèle : produit la structure du rapport sans constats",
@@ -78,6 +82,14 @@ def main() -> int:
     commands_meta = json.loads(Path(args.commands).read_text(encoding="utf-8"))
     audit = loading.load_audit(audit_dir)
     axes = analysis.build_axes(commands_meta, audit)
+
+    if args.axe:
+        connus = [a.cle for a in axes]
+        if args.axe not in connus:
+            print(f"Axe inconnu : {args.axe}. Axes disponibles : {', '.join(connus)}",
+                  file=sys.stderr)
+            return 1
+        axes = [a for a in axes if a.cle == args.axe]
 
     print(f"Audit    : {audit.cluster_name} ({audit.typology}) — {len(audit.artefacts)} artefacts")
     if audit.failures:
@@ -117,15 +129,27 @@ def main() -> int:
         if resultat.extraits_invérifiables:
             print(f"        {len(resultat.extraits_invérifiables)} extrait(s) invérifiable(s)")
 
-    rapport = rendering.render_report(audit, resultats)
-    chemin = audit_dir / RAPPORT
-    chemin.write_text(rapport, encoding="utf-8")
+    duree = time.perf_counter() - depart
+    chemin_rapport, chemin_conso = usage.output_paths(audit_dir, args.axe)
 
-    total = sum(len(r.constats) for r in resultats)
-    non_evalues = sum(1 for r in resultats if r.erreur)
-    print(f"\nRapport écrit : {chemin}")
-    print(f"{total} constat(s) sur {len(axes) - non_evalues}/{len(axes)} axes évalués "
-          f"en {time.perf_counter() - depart:.0f} s")
+    chemin_rapport.write_text(rendering.render_report(audit, resultats), encoding="utf-8")
+
+    modele = getattr(caller, "model", "—")
+    effort = getattr(caller, "effort", "—")
+    conso = usage.build_report(modele, effort, resultats, duree)
+    chemin_conso.write_text(
+        json.dumps(conso, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+
+    total = conso["total"]
+    print(f"\nRapport      : {chemin_rapport}")
+    print(f"Consommation : {chemin_conso}")
+    print(f"{total['constats']} constat(s) sur "
+          f"{total['axes_evalues']}/{total['axes_total']} axes évalués en {duree:.0f} s")
+    print(f"Jetons       : {total['input_tokens']:,} en entrée, "
+          f"{total['output_tokens']:,} en sortie (raisonnement inclus)")
+    if total["cout_usd"] is not None:
+        print(f"Coût mesuré  : {total['cout_usd']:.2f} $")
     return 0
 
 

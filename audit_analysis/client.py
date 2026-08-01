@@ -9,6 +9,7 @@ import json
 from typing import Any, Dict, Optional
 
 from .analysis import ModelOutcome
+from .model import Usage
 
 MODEL = "claude-opus-5"
 EFFORT = "high"
@@ -77,18 +78,34 @@ class AnthropicCaller:
         with self.client.beta.messages.stream(**kwargs) as stream:
             message = stream.get_final_message()
 
+        consommation = _read_usage(message)
+
         # À vérifier avant de lire `content` : un refus renvoie un 200 dont le
         # contenu est vide ou partiel.
         if getattr(message, "stop_reason", None) == "refusal":
             details = getattr(message, "stop_details", None)
-            return ModelOutcome(refusal=getattr(details, "category", None) or "non précisé")
+            return ModelOutcome(refusal=getattr(details, "category", None) or "non précisé",
+                                usage=consommation)
 
         text = next(
             (b.text for b in message.content if getattr(b, "type", None) == "text"), None
         )
         if not text:
-            return ModelOutcome()
-        return ModelOutcome(data=json.loads(text))
+            return ModelOutcome(usage=consommation)
+        return ModelOutcome(data=json.loads(text), usage=consommation)
+
+
+def _read_usage(message: Any) -> Usage:
+    """Relève la consommation rapportée par l'API, y compris sur un refus."""
+    u = getattr(message, "usage", None)
+    if u is None:
+        return Usage()
+    return Usage(
+        input_tokens=getattr(u, "input_tokens", 0) or 0,
+        output_tokens=getattr(u, "output_tokens", 0) or 0,
+        cache_read_input_tokens=getattr(u, "cache_read_input_tokens", 0) or 0,
+        cache_creation_input_tokens=getattr(u, "cache_creation_input_tokens", 0) or 0,
+    )
 
 
 def resolve_credentials() -> Optional[str]:

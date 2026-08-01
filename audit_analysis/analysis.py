@@ -7,11 +7,12 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Protocol
 
 from .loading import Audit
-from .model import AxeAnalyse, ResultatAxe, strict_schema
+from .model import AxeAnalyse, ResultatAxe, Usage, strict_schema
 from .reduction import fit_to_budget
 
 # Marge sous la fenêtre du modèle : la sortie et le prompt système comptent aussi.
@@ -24,6 +25,7 @@ class ModelOutcome:
 
     data: Optional[Dict[str, Any]] = None
     refusal: Optional[str] = None
+    usage: Optional[Usage] = None
 
 
 class Caller(Protocol):
@@ -168,11 +170,15 @@ def analyse_axis(
     system = build_system_prompt(audit, commands_meta)
     user = build_user_prompt(axe, audit, commands_meta, artefacts, failures)
 
+    depart = time.perf_counter()
     try:
         outcome = caller.complete(system, user, strict_schema(ResultatAxe))
     except Exception as exc:
+        axe.duree_s = time.perf_counter() - depart
         axe.erreur = f"appel du modèle impossible : {exc}"
         return axe
+    axe.duree_s = time.perf_counter() - depart
+    axe.usage = outcome.usage
 
     if outcome.refusal is not None:
         axe.erreur = (
