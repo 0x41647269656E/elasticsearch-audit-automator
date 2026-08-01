@@ -7,13 +7,9 @@ axe n'écrase ni l'un ni l'autre.
 from __future__ import annotations
 
 import datetime
-from pathlib import Path
-from typing import Any, Dict, Iterable, Optional, Tuple
+from typing import Any, Dict, Iterable, Optional
 
 from .model import AxeAnalyse, Usage
-
-RAPPORT = "rapport.md"
-CONSOMMATION = "consommation.json"
 
 # Tarifs en dollars par million de jetons. Table locale : elle peut dériver des
 # tarifs publiés, d'où un coût absent plutôt que faux pour un modèle inconnu.
@@ -83,18 +79,3 @@ def build_report(
         },
         "_tarifs": TARIFS.get(model),
     }
-
-
-def output_paths(audit_dir: Path | str, axe: Optional[str] = None) -> Tuple[Path, Path]:
-    """Chemins du rapport et de la consommation.
-
-    Un rejeu porte le nom de l'axe et un horodatage : il ne remplace jamais le
-    rapport complet, et deux rejeux successifs coexistent pour être comparés.
-    """
-    directory = Path(audit_dir)
-    if axe is None:
-        return directory / RAPPORT, directory / CONSOMMATION
-
-    stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
-    suffixe = f"rejeu-{axe}-{stamp}"
-    return directory / f"rapport-{suffixe}.md", directory / f"consommation-{suffixe}.json"

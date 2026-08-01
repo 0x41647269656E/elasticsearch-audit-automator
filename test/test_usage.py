@@ -1,4 +1,3 @@
-import re
 import unittest
 
 from audit_analysis import usage
@@ -75,37 +74,6 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(rapport["modele"], "claude-opus-5")
         self.assertEqual(rapport["effort"], "high")
         self.assertEqual(rapport["duree_s"], 200.0)
-
-
-class OutputNamingTests(unittest.TestCase):
-    """Un rejeu ne doit jamais écraser le rapport complet."""
-
-    def test_full_run_uses_the_canonical_names(self) -> None:
-        rapport, conso = usage.output_paths("data/audit")
-
-        self.assertEqual(rapport.name, "rapport.md")
-        self.assertEqual(conso.name, "consommation.json")
-
-    def test_a_replay_names_the_axis_it_replayed(self) -> None:
-        rapport, conso = usage.output_paths("data/audit", axe="securite")
-
-        self.assertIn("rejeu", rapport.name)
-        self.assertIn("securite", rapport.name)
-        self.assertTrue(rapport.name.endswith(".md"))
-        self.assertIn("rejeu", conso.name)
-        self.assertIn("securite", conso.name)
-
-    def test_a_replay_is_timestamped_so_successive_ones_coexist(self) -> None:
-        rapport, _ = usage.output_paths("data/audit", axe="securite")
-
-        self.assertRegex(rapport.name, r"\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}")
-
-    def test_a_replay_never_collides_with_the_full_report(self) -> None:
-        complet, conso_complet = usage.output_paths("data/audit")
-        rejeu, conso_rejeu = usage.output_paths("data/audit", axe="securite")
-
-        self.assertNotEqual(complet, rejeu)
-        self.assertNotEqual(conso_complet, conso_rejeu)
 
 
 if __name__ == "__main__":

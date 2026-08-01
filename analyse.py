@@ -13,7 +13,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from audit_analysis import analysis, loading, rendering, usage
+from audit_analysis import analysis, loading, persistence, rendering, usage
 from audit_analysis.client import AnthropicCaller, resolve_credentials
 
 
@@ -56,6 +56,15 @@ def parse_args() -> argparse.Namespace:
              "sans l'écraser",
     )
     parser.add_argument(
+        "--rerender",
+        nargs="?",
+        const=True,
+        default=None,
+        metavar="CONSTATS",
+        help="Régénère le rapport depuis constats.json, sans aucun appel au modèle "
+             "ni dépense. Accepte le chemin d'un autre fichier de constats.",
+    )
+    parser.add_argument(
         "--no-check-refs",
         action="store_true",
         help="N'interroge pas les URL citées par l'analyse pour vérifier qu'elles résolvent",
@@ -87,6 +96,23 @@ def main() -> int:
     commands_meta = json.loads(Path(args.commands).read_text(encoding="utf-8"))
     audit = loading.load_audit(audit_dir)
     axes = analysis.build_axes(commands_meta, audit)
+
+    if args.rerender:
+        source = (
+            Path(args.rerender) if isinstance(args.rerender, str)
+            else persistence.output_paths(audit_dir).constats
+        )
+        if not source.is_file():
+            print(f"Fichier de constats introuvable : {source}", file=sys.stderr)
+            print("Il est produit par une analyse ; aucun rendu n'est possible sans lui.",
+                  file=sys.stderr)
+            return 1
+        resultats = persistence.read_axes(source)
+        chemin = persistence.output_paths(audit_dir, args.axe).rapport
+        chemin.write_text(rendering.render_report(audit, resultats), encoding="utf-8")
+        print(f"Rapport régénéré depuis {source.name} : {chemin}")
+        print(f"{sum(len(r.constats) for r in resultats)} constat(s) — aucun appel au modèle")
+        return 0
 
     if args.axe:
         connus = [a.cle for a in axes]
@@ -141,20 +167,24 @@ def main() -> int:
         print(f"        {cassees} référence(s) non résolue(s)")
 
     duree = time.perf_counter() - depart
-    chemin_rapport, chemin_conso = usage.output_paths(audit_dir, args.axe)
+    sorties = persistence.output_paths(audit_dir, args.axe)
 
-    chemin_rapport.write_text(rendering.render_report(audit, resultats), encoding="utf-8")
+    # Les constats d'abord : ce sont eux qui ont coûté, et eux seuls permettent
+    # de refaire le rendu plus tard sans repayer une analyse déjà faite.
+    persistence.write_axes(sorties.constats, resultats)
+    sorties.rapport.write_text(rendering.render_report(audit, resultats), encoding="utf-8")
 
     modele = getattr(caller, "model", "—")
     effort = getattr(caller, "effort", "—")
     conso = usage.build_report(modele, effort, resultats, duree)
-    chemin_conso.write_text(
+    sorties.consommation.write_text(
         json.dumps(conso, indent=2, ensure_ascii=False), encoding="utf-8"
     )
 
     total = conso["total"]
-    print(f"\nRapport      : {chemin_rapport}")
-    print(f"Consommation : {chemin_conso}")
+    print(f"\nRapport      : {sorties.rapport}")
+    print(f"Constats     : {sorties.constats}")
+    print(f"Consommation : {sorties.consommation}")
     print(f"{total['constats']} constat(s) sur "
           f"{total['axes_evalues']}/{total['axes_total']} axes évalués en {duree:.0f} s")
     print(f"Jetons       : {total['input_tokens']:,} en entrée, "
