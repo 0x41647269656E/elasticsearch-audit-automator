@@ -11,10 +11,22 @@ import sys
 import time
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 from audit_analysis import analysis, loading, rendering
 from audit_analysis.client import AnthropicCaller, resolve_credentials
 
 RAPPORT = "rapport.md"
+
+
+def load_credentials(env_file="./.env") -> None:
+    """Charge .env comme le fait main.py.
+
+    Sans cet appel, une clé placée dans .env — ce que documente le projet —
+    resterait invisible pour le SDK, qui ne lit que l'environnement.
+    Une variable déjà exportée l'emporte sur le fichier.
+    """
+    load_dotenv(env_file, override=False)
 
 
 def parse_args() -> argparse.Namespace:
@@ -77,6 +89,7 @@ def main() -> int:
         caller = DryRunCaller()
         print("Mode     : exécution à blanc, aucun appel au modèle\n")
     else:
+        load_credentials()
         probleme = resolve_credentials()
         if probleme:
             print(probleme, file=sys.stderr)
