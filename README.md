@@ -261,7 +261,9 @@ Le script regroupe les artefacts selon les dix axes déclarés dans `commands.js
 
 ### Ce que contient le rapport
 
-Chaque axe présente, avant toute analyse, un bloc par commande : nœud interrogé, horodatage du passage, commande exécutée, statut, et renvoi vers l’annexe. Les constats viennent en dessous, chacun avec sa valeur relevée, sa sévérité pondérée par la typologie du cluster, son impact, sa remédiation et le chapitre Elastic qui la fonde (voir [REFERENCES.md](REFERENCES.md)).
+Chaque axe présente, avant toute analyse, un bloc par commande : nœud interrogé, horodatage du passage, commande exécutée, statut, et le nom du fichier contenant le relevé brut. Les constats viennent en dessous, chacun avec sa valeur relevée, sa sévérité pondérée par la typologie du cluster, son impact, sa remédiation et le chapitre Elastic qui la fonde (voir [REFERENCES.md](REFERENCES.md)).
+
+Le rapport ne recopie pas les relevés bruts : ils sont livrés tels quels, en fichiers, dans le dossier d’audit à côté de `rapport.md`. Le Markdown reste donc lisible quelle que soit la taille du cluster, et le client dispose des données d’origine sans retranscription.
 
 Deux garanties valent d’être connues :
 

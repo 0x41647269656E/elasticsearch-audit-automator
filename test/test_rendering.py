@@ -143,31 +143,29 @@ class BlindSpotTests(unittest.TestCase):
         self.assertIn("horodatage global", md.lower())
 
 
-class AnnexTests(unittest.TestCase):
-    def test_every_annex_link_resolves_to_a_real_anchor(self) -> None:
-        """A slugified heading would not match the link; anchors must be explicit."""
-        import re
+class RawDataTests(unittest.TestCase):
+    """Les relevés bruts sont livrés en fichiers à côté du rapport, pas dedans."""
 
+    def test_no_annex_section(self) -> None:
         md = rendering.render_report(audit_fixture(self), [axe()])
 
-        targets = set(re.findall(r"\]\(#([a-z0-9_-]+)\)", md))
-        anchors = set(re.findall(r'<a id="([a-z0-9_-]+)">', md))
-        self.assertTrue(targets)
-        self.assertEqual(targets - anchors, set())
+        self.assertNotIn("Annexe", md)
 
-    def test_small_artefact_is_included_in_full(self) -> None:
+    def test_does_not_inline_the_artefact_payload(self) -> None:
+        md = rendering.render_report(audit_fixture(self, big_artefact=True), [axe()])
+
+        self.assertNotIn("filler", md)
+
+    def test_command_block_names_the_file_holding_the_raw_data(self) -> None:
         md = rendering.render_report(audit_fixture(self), [axe()])
 
-        self.assertIn("number_of_replicas", md.split("## Annexe")[1])
+        self.assertIn("indices_settings.json", md)
 
-    def test_large_artefact_is_referenced_rather_than_inlined(self) -> None:
-        md = rendering.render_report(
-            audit_fixture(self, big_artefact=True), [axe()], annex_threshold=1024
-        )
+    def test_stays_small_regardless_of_artefact_size(self) -> None:
+        petit = rendering.render_report(audit_fixture(self), [axe()])
+        gros = rendering.render_report(audit_fixture(self, big_artefact=True), [axe()])
 
-        annex = md.split("## Annexe")[1]
-        self.assertIn("indices_settings.json", annex)
-        self.assertNotIn("filler", annex)
+        self.assertEqual(len(petit), len(gros))
 
 
 if __name__ == "__main__":

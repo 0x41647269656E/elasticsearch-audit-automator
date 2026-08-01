@@ -5,14 +5,10 @@ document. Il se teste donc entièrement avec des constats fabriqués.
 """
 from __future__ import annotations
 
-import json
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional
 
 from .loading import Artefact, Audit
 from .model import SEVERITES, AxeAnalyse
-
-ANNEX_THRESHOLD = 50 * 1024
-
 
 def _fence(payload: Any, output_format: str = "json") -> str:
     if output_format == "json":
@@ -20,14 +16,7 @@ def _fence(payload: Any, output_format: str = "json") -> str:
     return "```\n" + str(payload) + "\n```"
 
 
-def _anchor(index: int) -> tuple[str, str]:
-    """Identifiant d'ancre et libellé. L'ancre est explicite : un titre Markdown
-    est slugifié différemment selon le moteur, et le lien casserait."""
-    return f"a{index:02d}", f"A.{index:02d}"
-
-
-def _command_block(artefact: Artefact, excerpts: Iterable[str],
-                   anchor: tuple[str, str]) -> List[str]:
+def _command_block(artefact: Artefact, excerpts: Iterable[str]) -> List[str]:
     """Le bloc exigé avant toute analyse : commande, nœud, horodatage, relevé."""
     meta = artefact.metadata
     lines = [
@@ -39,8 +28,7 @@ def _command_block(artefact: Artefact, excerpts: Iterable[str],
     ]
     if meta.get("status") is not None:
         lines.append(f"- **statut** : {meta['status']} en {meta.get('duration_ms', '?')} ms")
-    anchor_id, label = anchor
-    lines.append(f"- **relevé complet** : [annexe {label}](#{anchor_id})")
+    lines.append(f"- **relevé complet** : `{artefact.path.name}`, livré avec le rapport")
     lines.append("")
 
     excerpts = list(excerpts)
@@ -48,7 +36,7 @@ def _command_block(artefact: Artefact, excerpts: Iterable[str],
         lines.append("Extraits retenus pour cet axe :")
         lines.append("")
         for fragment in excerpts:
-            lines.append(_fence(fragment, "text"))
+            lines.append(_fence(fragment))
             lines.append("")
     return lines
 
@@ -85,7 +73,7 @@ def _summary_table(axes: List[AxeAnalyse]) -> List[str]:
     return lines
 
 
-def _axis_section(axe: AxeAnalyse, audit: Audit, anchors: Dict[str, tuple],
+def _axis_section(axe: AxeAnalyse, audit: Audit,
                   excerpts_by_command: Dict[str, List[str]]) -> List[str]:
     lines = [f"## Axe — {axe.titre}", "", f"Référence : <{axe.reference}>", ""]
 
@@ -105,7 +93,7 @@ def _axis_section(axe: AxeAnalyse, audit: Audit, anchors: Dict[str, tuple],
         artefact = audit.artefacts.get(name)
         if artefact is None:
             continue
-        lines += _command_block(artefact, excerpts_by_command.get(name, []), anchors[name])
+        lines += _command_block(artefact, excerpts_by_command.get(name, []))
 
     lines += ["**Constats**", ""]
     if not axe.constats:
@@ -138,39 +126,12 @@ def _axis_section(axe: AxeAnalyse, audit: Audit, anchors: Dict[str, tuple],
     return lines
 
 
-def _annex(audit: Audit, used: List[str], anchors: Dict[str, tuple], threshold: int) -> List[str]:
-    lines = ["## Annexe A — relevés bruts", ""]
-    for name in used:
-        artefact = audit.artefacts.get(name)
-        if artefact is None:
-            continue
-        anchor_id, label = anchors[name]
-        lines += [f'### <a id="{anchor_id}"></a>{label} — `{name}`', ""]
-        if artefact.size > threshold:
-            lines += [
-                f"Artefact volumineux ({artefact.size / 1024:.0f} Ko) — non recopié ici. "
-                f"Fichier d'origine : `{artefact.path.name}`, dans le dossier d'audit.",
-                "",
-            ]
-        else:
-            lines += [_fence(artefact.data, artefact.output_format), ""]
-    return lines
-
-
 def render_report(
     audit: Audit,
     axes: List[AxeAnalyse],
     excerpts_by_command: Optional[Dict[str, List[str]]] = None,
-    annex_threshold: int = ANNEX_THRESHOLD,
 ) -> str:
     excerpts_by_command = excerpts_by_command or {}
-
-    used: List[str] = []
-    for axe in axes:
-        for name in axe.commandes:
-            if name in audit.artefacts and name not in used:
-                used.append(name)
-    anchors = {name: _anchor(i) for i, name in enumerate(used, start=1)}
 
     lines = [
         f"# Audit Elasticsearch — {audit.cluster_name or 'cluster inconnu'}",
@@ -192,7 +153,6 @@ def render_report(
 
     lines += _summary_table(axes)
     for axe in axes:
-        lines += _axis_section(axe, audit, anchors, excerpts_by_command)
-    lines += _annex(audit, used, anchors, annex_threshold)
+        lines += _axis_section(axe, audit, excerpts_by_command)
 
     return "\n".join(lines).rstrip() + "\n"
