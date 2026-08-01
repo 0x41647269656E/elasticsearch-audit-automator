@@ -62,6 +62,41 @@ class AuditContextCitationTests(unittest.TestCase):
         self.assertEqual(len(unverified), 1)
 
 
+class AbbreviatedCitationTests(unittest.TestCase):
+    """Recopier un artefact de plusieurs kilo-octets verbatim n'a pas de sens :
+    le modèle abrège avec des points de suspension. Chaque morceau doit tout de
+    même exister, et dans l'ordre."""
+
+    def setUp(self) -> None:
+        self.audit = audit_fixture(self)
+
+    def test_accepts_an_abbreviated_fragment_whose_pieces_all_exist(self) -> None:
+        unverified = analysis.verify_excerpts(
+            resultat("indices_settings", '"idx": {... "number_of_replicas": "0"'), self.audit)
+
+        self.assertEqual(unverified, [])
+
+    def test_accepts_the_unicode_ellipsis_too(self) -> None:
+        unverified = analysis.verify_excerpts(
+            resultat("indices_settings", '"idx": {… "number_of_replicas": "0"'), self.audit)
+
+        self.assertEqual(unverified, [])
+
+    def test_rejects_it_when_one_piece_is_invented(self) -> None:
+        unverified = analysis.verify_excerpts(
+            resultat("indices_settings", '"idx": {... "number_of_replicas": "3"'), self.audit)
+
+        self.assertEqual(len(unverified), 1)
+
+    def test_rejects_pieces_that_exist_but_in_the_wrong_order(self) -> None:
+        """Sinon l'abréviation deviendrait un moyen de composer une citation
+        qui ne figure nulle part telle quelle."""
+        unverified = analysis.verify_excerpts(
+            resultat("indices_settings", '"number_of_replicas": "0" ... "idx"'), self.audit)
+
+        self.assertEqual(len(unverified), 1)
+
+
 class ReferenceCheckTests(unittest.TestCase):
     """Le modèle affine parfois l'URL de l'axe — utile quand elle existe,
     inacceptable dans un livrable quand elle est inventée."""

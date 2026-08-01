@@ -71,6 +71,30 @@ def _normalise(text: str) -> str:
     return re.sub(r"\s+", "", text)
 
 
+ELLIPSE = re.compile(r"\.{3,}|…")
+
+
+def _fragment_present(fragment: str, haystack: str) -> bool:
+    """Le fragment figure-t-il dans l'artefact, abréviations comprises ?
+
+    Recopier verbatim un artefact de plusieurs kilo-octets n'aurait pas de sens,
+    et le modèle abrège avec des points de suspension. Chaque morceau doit
+    néanmoins exister, et dans l'ordre : sans cette contrainte d'ordre,
+    l'abréviation permettrait de composer une citation qui ne figure nulle part.
+    """
+    morceaux = [m for m in (_normalise(p) for p in ELLIPSE.split(fragment)) if m]
+    if not morceaux:
+        return False
+
+    position = 0
+    for morceau in morceaux:
+        trouve = haystack.find(morceau, position)
+        if trouve < 0:
+            return False
+        position = trouve + len(morceau)
+    return True
+
+
 def verify_excerpts(resultat: ResultatAxe, audit: Audit) -> List[str]:
     """Retourne les fragments introuvables dans leur artefact d'origine.
 
@@ -99,7 +123,7 @@ def verify_excerpts(resultat: ResultatAxe, audit: Audit) -> List[str]:
 
             if brut is not None:
                 serialise[source] = _normalise(brut)
-            if _normalise(extrait.fragment) not in serialise[source]:
+            if not _fragment_present(extrait.fragment, serialise[source]):
                 introuvables.append(f"{source} : {extrait.fragment}")
 
     return introuvables
@@ -202,7 +226,9 @@ def build_user_prompt(
 
     parts += [
         "Chaque constat doit citer, dans `extraits`, le fragment exact recopié depuis "
-        "l'un des relevés ci-dessus. Ne cite jamais un fragment que tu n'as pas sous les yeux.",
+        "l'un des relevés ci-dessus. Ne cite jamais un fragment que tu n'as pas sous les yeux. "
+        "Tu peux abréger un passage long avec « ... » : chaque morceau conservé doit rester "
+        "recopié à l'identique, et dans son ordre d'apparition.",
     ]
     return "\n".join(parts)
 

@@ -108,6 +108,16 @@ def main() -> int:
                   file=sys.stderr)
             return 1
         resultats = persistence.read_axes(source)
+
+        # Les vérifications locales sont gratuites et ont pu s'améliorer depuis
+        # l'analyse : les rejouer fait profiter un rapport ancien des correctifs
+        # sans rappeler le modèle.
+        for axe in resultats:
+            if axe.resultat:
+                axe.extraits_invérifiables = analysis.verify_excerpts(axe.resultat, audit)
+        signales = sum(len(a.extraits_invérifiables) for a in resultats)
+        print(f"Extraits revérifiés : {signales} signalé(s)")
+
         chemin = persistence.output_paths(audit_dir, args.axe).rapport
         chemin.write_text(rendering.render_report(audit, resultats), encoding="utf-8")
         print(f"Rapport régénéré depuis {source.name} : {chemin}")
