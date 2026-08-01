@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Protocol
 
 from .loading import Audit
-from .model import AxeAnalyse, ResultatAxe
+from .model import AxeAnalyse, ResultatAxe, strict_schema
 from .reduction import fit_to_budget
 
 # Marge sous la fenêtre du modèle : la sortie et le prompt système comptent aussi.
@@ -169,7 +169,7 @@ def analyse_axis(
     user = build_user_prompt(axe, audit, commands_meta, artefacts, failures)
 
     try:
-        outcome = caller.complete(system, user, ResultatAxe.model_json_schema())
+        outcome = caller.complete(system, user, strict_schema(ResultatAxe))
     except Exception as exc:
         axe.erreur = f"appel du modèle impossible : {exc}"
         return axe
