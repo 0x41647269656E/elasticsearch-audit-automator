@@ -8,8 +8,9 @@ from __future__ import annotations
 import json
 import re
 import time
+import urllib.request
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Callable, Dict, Iterable, List, Optional, Protocol
 
 from .loading import Audit
 from .model import AxeAnalyse, ResultatAxe, Usage, strict_schema
@@ -17,6 +18,10 @@ from .reduction import fit_to_budget
 
 # Marge sous la fenêtre du modèle : la sortie et le prompt système comptent aussi.
 DEFAULT_BUDGET_TOKENS = 700_000
+
+# Sources citables au-delà des artefacts de commandes : le contexte
+# d'audit est transmis au modèle dans le prompt système.
+AUDIT_CONTEXT_SOURCES = {"audit_infos", "audit_info", "contexte"}
 
 
 @dataclass
@@ -78,18 +83,66 @@ def verify_excerpts(resultat: ResultatAxe, audit: Audit) -> List[str]:
 
     for constat in resultat.constats:
         for extrait in constat.extraits:
-            artefact = audit.artefacts.get(extrait.commande)
-            if artefact is None:
-                introuvables.append(f"{extrait.commande} : commande absente du dossier d'audit")
-                continue
-            if extrait.commande not in serialise:
-                data = artefact.data
+            source = extrait.commande
+            if source in serialise:
+                brut = None
+            elif source.removesuffix(".json") in AUDIT_CONTEXT_SOURCES:
+                # Le contexte d'audit est fourni au modèle dans le prompt
+                # système : le citer est légitime, et tout aussi vérifiable.
+                brut = json.dumps(audit.infos, ensure_ascii=False)
+            elif source in audit.artefacts:
+                data = audit.artefacts[source].data
                 brut = data if isinstance(data, str) else json.dumps(data, ensure_ascii=False)
-                serialise[extrait.commande] = _normalise(brut)
-            if _normalise(extrait.fragment) not in serialise[extrait.commande]:
-                introuvables.append(f"{extrait.commande} : {extrait.fragment}")
+            else:
+                introuvables.append(f"{source} : source absente du dossier d'audit")
+                continue
+
+            if brut is not None:
+                serialise[source] = _normalise(brut)
+            if _normalise(extrait.fragment) not in serialise[source]:
+                introuvables.append(f"{source} : {extrait.fragment}")
 
     return introuvables
+
+
+def verify_references(
+    axes: Iterable[AxeAnalyse], checker: Callable[[str], bool] = None
+) -> None:
+    """Marque les références citées qui ne résolvent pas.
+
+    Le modèle affine souvent l'URL de l'axe vers un chapitre plus précis, ce
+    qui est utile — mais il lui arrive d'en forger une plausible et inexistante.
+    Dans un livrable dont l'argument est l'opposabilité à une source officielle,
+    un lien mort n'a pas sa place sans avertissement.
+    """
+    if checker is None:
+        checker = _url_resolves
+
+    cache: Dict[str, bool] = {}
+    for axe in axes:
+        cassees: List[str] = []
+        for constat in axe.constats:
+            url = constat.reference
+            if not url or not url.startswith("http"):
+                continue
+            if url not in cache:
+                try:
+                    cache[url] = bool(checker(url))
+                except Exception:
+                    # Réseau indisponible : on ne prétend pas que le lien est
+                    # cassé, on s'abstient.
+                    cache[url] = True
+            if not cache[url] and url not in cassees:
+                cassees.append(url)
+        axe.references_cassees = cassees
+
+
+def _url_resolves(url: str) -> bool:
+    request = urllib.request.Request(
+        url, method="HEAD", headers={"User-Agent": "elasticsearch-audit-automator"}
+    )
+    with urllib.request.urlopen(request, timeout=15) as response:
+        return response.status == 200
 
 
 def _artefacts_for(axe: AxeAnalyse, audit: Audit) -> Dict[str, Any]:

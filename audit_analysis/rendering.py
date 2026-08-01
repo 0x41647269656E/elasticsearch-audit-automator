@@ -119,6 +119,16 @@ def _axis_section(axe: AxeAnalyse, audit: Audit,
         lines += [f"> - `{fragment}`" for fragment in axe.extraits_invérifiables]
         lines.append("")
 
+    if axe.references_cassees:
+        lines += [
+            "> **Références non résolues** — les URL suivantes, citées par l'analyse, "
+            "ne répondent pas. Le constat peut rester valable, mais il n'est pas "
+            "opposable en l'état :",
+            "",
+        ]
+        lines += [f"> - <{url}>" for url in axe.references_cassees]
+        lines.append("")
+
     angles = axe.resultat.angles_morts if axe.resultat else []
     lines += ["**Angles morts**", ""]
     lines += ([f"- {a}" for a in angles] if angles else ["_Aucun._"])

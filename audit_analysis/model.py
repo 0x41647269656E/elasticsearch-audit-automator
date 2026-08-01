@@ -99,6 +99,7 @@ class AxeAnalyse:
     erreur: Optional[str] = None
     agregations: List[str] = field(default_factory=list)
     extraits_invérifiables: List[str] = field(default_factory=list)
+    references_cassees: List[str] = field(default_factory=list)
     usage: Optional["Usage"] = None
     duree_s: float = 0.0
 

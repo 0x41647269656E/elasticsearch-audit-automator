@@ -56,6 +56,11 @@ def parse_args() -> argparse.Namespace:
              "sans l'écraser",
     )
     parser.add_argument(
+        "--no-check-refs",
+        action="store_true",
+        help="N'interroge pas les URL citées par l'analyse pour vérifier qu'elles résolvent",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="N'appelle pas le modèle : produit la structure du rapport sans constats",
@@ -128,6 +133,12 @@ def main() -> int:
             print(f"        {len(resultat.constats)} constat(s)")
         if resultat.extraits_invérifiables:
             print(f"        {len(resultat.extraits_invérifiables)} extrait(s) invérifiable(s)")
+
+    if not args.no_check_refs:
+        print("\nVérification des références citées…", flush=True)
+        analysis.verify_references(resultats)
+        cassees = sum(len(r.references_cassees) for r in resultats)
+        print(f"        {cassees} référence(s) non résolue(s)")
 
     duree = time.perf_counter() - depart
     chemin_rapport, chemin_conso = usage.output_paths(audit_dir, args.axe)
