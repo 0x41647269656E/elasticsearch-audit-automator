@@ -10,7 +10,7 @@ Un outil en Python pour automatiser l’audit de clusters Elasticsearch via HTTP
 - Sauvegarde des réponses en JSON ou texte selon `output_format`.
 - Journalisation des commandes en échec dans `errors.log`.
 - Génération d’un fichier `audit_infos.json` résumant la session (méthode de connexion, commandes exécutées/échouées, infos des nœuds, etc.).
-- Invitation à lancer ultérieurement `analyse.py` en pointant vers le dossier d’audit.
+- Analyse du dossier d’audit par `analyse.py` : dix axes calqués sur le guide de mise en production d’Elastic, et un compte-rendu Markdown mêlant relevés bruts et constats assortis d’actions de remédiation.
 
 ## Installation
 ```bash
@@ -232,6 +232,51 @@ Analyse ignorée. Les données d'audit sont prêtes.
 ```
 
 Le script propose ensuite : `Souhaitez-vous lancer le script d’analyse ? (Y/n)`. Répondez `Y` pour exécuter `analyse.py` en lui passant le chemin du dossier d’audit généré.
+
+## Analyser un audit
+
+`analyse.py` **ne se connecte pas à Elasticsearch**. Il relit un dossier déjà produit par `main.py` et n’a besoin que d’une clé Anthropic. Les identifiants du cluster ne concernent que la collecte.
+
+```bash
+python main.py --host … --username … --client-name acme     # collecte
+python analyse.py data/2026-08-01_08-06-14-acme-audit-es8    # analyse
+```
+
+Le script regroupe les artefacts selon les dix axes déclarés dans `commands.json`, interroge le modèle une fois par axe, et écrit `rapport.md` dans le dossier d’audit.
+
+### Configuration
+
+- `ANTHROPIC_API_KEY` dans `.env` (ou exporté ; la variable l’emporte sur le fichier). Un profil `ant auth login` fonctionne également : le SDK le résout seul.
+- La clé se crée sur <https://platform.claude.com> — la facturation de l’API est distincte d’un abonnement Claude.
+
+### Options
+
+| Option | Effet |
+|---|---|
+| `--effort` | `low` à `max` (défaut `high`) : profondeur de raisonnement, et principal levier de coût |
+| `--model` | Modèle à utiliser (défaut `claude-opus-5`) |
+| `--budget-tokens` | Seuil au-delà duquel les artefacts d’un axe sont agrégés |
+| `--no-fallback` | Désactive le repli serveur en cas de refus du modèle |
+| `--dry-run` | Produit la structure du rapport **sans appeler le modèle** ni dépenser de jetons |
+
+### Ce que contient le rapport
+
+Chaque axe présente, avant toute analyse, un bloc par commande : nœud interrogé, horodatage du passage, commande exécutée, statut, et renvoi vers l’annexe. Les constats viennent en dessous, chacun avec sa valeur relevée, sa sévérité pondérée par la typologie du cluster, son impact, sa remédiation et le chapitre Elastic qui la fonde (voir [REFERENCES.md](REFERENCES.md)).
+
+Deux garanties valent d’être connues :
+
+- **Les commandes en échec sont déclarées.** Un axe dont les commandes ont été refusées annonce son angle mort au lieu de conclure à l’absence de problème.
+- **Les extraits cités sont revérifiés** contre l’artefact d’origine. Un fragment introuvable est signalé comme invérifiable plutôt que présenté comme une preuve.
+
+### Coût
+
+Le coût suit le nombre d’index, de shards, de segments et de champs de mapping — ni le volume de données ni le nombre de documents, qui ne changent que des valeurs numériques dans le JSON. Comptez quelques euros sur une stack de test, et de l’ordre de 50 à 100 € sur un cluster de 400 index. Mesurez avant de lancer :
+
+```bash
+python analyse.py data/<dossier> --dry-run   # structure du rapport, sans appel
+```
+
+Quand les artefacts d’un axe dépassent le budget de fenêtre, trois agrégations ciblées s’appliquent — segments résumés par shard, mappings réduits à leurs compteurs de champs, `cluster_state` privé des mappings qu’il duplique. Toute agrégation appliquée est signalée dans le rapport.
 
 ## Licence
 Ce projet est distribué sous licence MIT. Voir le fichier [LICENSE](LICENSE).

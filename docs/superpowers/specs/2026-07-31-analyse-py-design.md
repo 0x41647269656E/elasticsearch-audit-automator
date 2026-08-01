@@ -193,9 +193,11 @@ s'appliquent, dans cet ordre, jusqu'à repasser sous le seuil :
 
 | Artefact | Agrégation | Effet mesuré |
 |---|---|---|
-| `indices_segments` | compte et distribution de taille par shard | 7,9 Mo → ~200 Ko |
-| `indices_mappings` | nombre de champs, histogramme des types, champs à risque | ~5,8 Mo → ~150 Ko |
-| `cluster_state` | anomalies de routage et métadonnées, sans redupliquer les mappings | ~6,6 Mo → ~500 Ko |
+| `indices_segments` | compte et distribution de taille par shard | 6,5 Mo → 356 Ko (19×) |
+| `indices_mappings` | nombre de champs, histogramme des types, champs à risque | 2,7 Mo → 60 Ko (46×) |
+| `cluster_state` | anomalies de routage et métadonnées, sans redupliquer les mappings | 2,8 Mo → 31 Ko (93×) |
+
+Chiffres mesurés sur des charges construites à l'échelle cible, non estimés.
 
 Ces trois agrégats **répondent exactement à ce que demandent les prompts de
 commande** — « le nombre de segments par shard, leur taille », « le nombre de
