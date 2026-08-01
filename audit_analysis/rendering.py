@@ -20,7 +20,14 @@ def _fence(payload: Any, output_format: str = "json") -> str:
     return "```\n" + str(payload) + "\n```"
 
 
-def _command_block(artefact: Artefact, excerpts: Iterable[str], anchor: str) -> List[str]:
+def _anchor(index: int) -> tuple[str, str]:
+    """Identifiant d'ancre et libellé. L'ancre est explicite : un titre Markdown
+    est slugifié différemment selon le moteur, et le lien casserait."""
+    return f"a{index:02d}", f"A.{index:02d}"
+
+
+def _command_block(artefact: Artefact, excerpts: Iterable[str],
+                   anchor: tuple[str, str]) -> List[str]:
     """Le bloc exigé avant toute analyse : commande, nœud, horodatage, relevé."""
     meta = artefact.metadata
     lines = [
@@ -32,7 +39,8 @@ def _command_block(artefact: Artefact, excerpts: Iterable[str], anchor: str) -> 
     ]
     if meta.get("status") is not None:
         lines.append(f"- **statut** : {meta['status']} en {meta.get('duration_ms', '?')} ms")
-    lines.append(f"- **relevé complet** : [annexe {anchor}](#{anchor.lower()})")
+    anchor_id, label = anchor
+    lines.append(f"- **relevé complet** : [annexe {label}](#{anchor_id})")
     lines.append("")
 
     excerpts = list(excerpts)
@@ -77,7 +85,7 @@ def _summary_table(axes: List[AxeAnalyse]) -> List[str]:
     return lines
 
 
-def _axis_section(axe: AxeAnalyse, audit: Audit, anchors: Dict[str, str],
+def _axis_section(axe: AxeAnalyse, audit: Audit, anchors: Dict[str, tuple],
                   excerpts_by_command: Dict[str, List[str]]) -> List[str]:
     lines = [f"## Axe — {axe.titre}", "", f"Référence : <{axe.reference}>", ""]
 
@@ -130,14 +138,14 @@ def _axis_section(axe: AxeAnalyse, audit: Audit, anchors: Dict[str, str],
     return lines
 
 
-def _annex(audit: Audit, used: List[str], anchors: Dict[str, str], threshold: int) -> List[str]:
+def _annex(audit: Audit, used: List[str], anchors: Dict[str, tuple], threshold: int) -> List[str]:
     lines = ["## Annexe A — relevés bruts", ""]
     for name in used:
         artefact = audit.artefacts.get(name)
         if artefact is None:
             continue
-        anchor = anchors[name]
-        lines += [f"### {anchor} — `{name}`", ""]
+        anchor_id, label = anchors[name]
+        lines += [f'### <a id="{anchor_id}"></a>{label} — `{name}`', ""]
         if artefact.size > threshold:
             lines += [
                 f"Artefact volumineux ({artefact.size / 1024:.0f} Ko) — non recopié ici. "
@@ -162,7 +170,7 @@ def render_report(
         for name in axe.commandes:
             if name in audit.artefacts and name not in used:
                 used.append(name)
-    anchors = {name: f"A.{i:02d}" for i, name in enumerate(used, start=1)}
+    anchors = {name: _anchor(i) for i, name in enumerate(used, start=1)}
 
     lines = [
         f"# Audit Elasticsearch — {audit.cluster_name or 'cluster inconnu'}",

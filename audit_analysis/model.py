@@ -41,6 +41,10 @@ class AxeAnalyse:
     titre: str
     reference: str
     commandes: List[str]
+    # Toutes les commandes déclarées pour cet axe, y compris celles qui ont
+    # échoué et n'ont donc produit aucun artefact : ce sont elles qui portent
+    # les angles morts.
+    commandes_declarees: List[str] = field(default_factory=list)
     resultat: Optional[ResultatAxe] = None
     erreur: Optional[str] = None
     agregations: List[str] = field(default_factory=list)

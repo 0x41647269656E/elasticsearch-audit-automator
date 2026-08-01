@@ -144,6 +144,17 @@ class BlindSpotTests(unittest.TestCase):
 
 
 class AnnexTests(unittest.TestCase):
+    def test_every_annex_link_resolves_to_a_real_anchor(self) -> None:
+        """A slugified heading would not match the link; anchors must be explicit."""
+        import re
+
+        md = rendering.render_report(audit_fixture(self), [axe()])
+
+        targets = set(re.findall(r"\]\(#([a-z0-9_-]+)\)", md))
+        anchors = set(re.findall(r'<a id="([a-z0-9_-]+)">', md))
+        self.assertTrue(targets)
+        self.assertEqual(targets - anchors, set())
+
     def test_small_artefact_is_included_in_full(self) -> None:
         md = rendering.render_report(audit_fixture(self), [axe()])
 
