@@ -187,6 +187,25 @@ Paramètres clés :
 
 Le service `data-loader` vérifie la santé du cluster, attend l’état `green`, crée l’utilisateur cible si besoin, provisionne 10 indices et charge les documents du fichier local embarqué (`dummy_data.json`).
 
+### Cluster Elasticsearch 9.4.4 (HTTPS avec certificats)
+La pile 9.4.4 est calquée sur la 9.2.3 : TLS activé, certificats générés par le conteneur `setup`, ports décalés pour cohabiter avec les autres stacks. C’est la version la plus récente disponible ; elle sert à vérifier que l’outil suit les évolutions d’Elasticsearch.
+
+Commandes :
+```bash
+docker compose -p es94 -f test/9.4.4/docker-compose.yml up -d
+docker compose -p es94 -f test/9.4.4/docker-compose.yml logs -f data-loader
+```
+
+Paramètres clés :
+- Accès HTTPS : `https://localhost:9500` (es01) avec es02/es03 mappés sur `9501` et `9502`
+- Superuser initial : `elastic` / `changeme`
+- Utilisateur d’audit : `audit-elasticsearch` / `audit-me` (créé automatiquement par le `data-loader`)
+- Indices générés automatiquement : `audit-demo-9.4.4-01` à `audit-demo-9.4.4-10`
+- Kibana : http://localhost:5604
+- Politique de privilèges : `audit_policy_8.json`, comme toutes les versions 8.x et 9.x
+
+Vérifiée de bout en bout : les trois nœuds passent `healthy`, le `data-loader` sort en 0, et `main.py` exécute **43 commandes sur 43** sans échec.
+
 ### Utiliser `main.py` contre les clusters de test
 #### Mode HTTP (cluster 7.17)
 ```bash

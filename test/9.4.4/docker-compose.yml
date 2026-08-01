@@ -1,0 +1,236 @@
+x-elasticsearch-environment: &es-env
+  node.store.allow_mmap: "false"
+  cluster.name: audit-es94
+  discovery.seed_hosts: es01,es02,es03
+  cluster.initial_master_nodes: es01,es02,es03
+  network.host: 0.0.0.0
+  bootstrap.memory_lock: "true"
+  xpack.security.enabled: "true"
+  xpack.security.http.ssl.enabled: "true"
+  xpack.security.http.ssl.certificate_authorities: /usr/share/elasticsearch/config/certs/ca/ca.crt
+  xpack.security.transport.ssl.enabled: "true"
+  xpack.security.transport.ssl.verification_mode: certificate
+  xpack.security.transport.ssl.certificate_authorities: /usr/share/elasticsearch/config/certs/ca/ca.crt
+  ELASTIC_PASSWORD: changeme
+  ES_JAVA_OPTS: -Xms512m -Xmx512m
+  http.port: 9200
+  transport.port: 9300
+
+x-elasticsearch-common: &es-common
+  image: docker.elastic.co/elasticsearch/elasticsearch:9.4.4
+  environment: *es-env
+  ulimits:
+    memlock:
+      soft: -1
+      hard: -1
+  volumes:
+    - ./certs:/usr/share/elasticsearch/config/certs:rw
+  healthcheck:
+    test: ["CMD", "curl", "-s", "-k", "https://localhost:9200/_cluster/health"]
+    interval: 10s
+    timeout: 10s
+    retries: 10
+    start_period: 60s
+
+services:
+  setup:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.4.4
+    container_name: es94-setup
+    user: "0"
+    volumes:
+      - ./certs:/usr/share/elasticsearch/config/certs
+      - ../scripts/instances.yml:/usr/share/elasticsearch/config/instances.yml:ro
+    command: >
+      bash -c "
+        set -e
+
+        mkdir -p config/certs/ca config/certs/certs
+
+        if [ ! -f config/certs/ca/ca.crt ]; then
+          echo 'Generating CA'
+          rm -f config/certs/ca.zip
+          yes | bin/elasticsearch-certutil ca --silent --pem -out config/certs/ca.zip
+          unzip -o config/certs/ca.zip -d config/certs
+        fi
+
+        if [ ! -f config/certs/es01/es01.crt ]; then
+          echo 'Generating node certificates from instances.yml'
+          rm -f config/certs/certs.zip
+          yes | bin/elasticsearch-certutil cert --silent --pem --in config/instances.yml --ca-cert config/certs/ca/ca.crt --ca-key config/certs/ca/ca.key -out config/certs/certs.zip
+          unzip -o config/certs/certs.zip -d config/certs
+        fi
+
+        chown -R 1000:1000 config/certs && echo 'Certificates ready'
+      "
+
+  es01:
+    <<: *es-common
+    container_name: es94-es01
+    mem_limit: 1g
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    ports:
+      - "9500:9200"
+    environment:
+      <<: *es-env
+      node.name: es01
+      xpack.security.http.ssl.certificate: /usr/share/elasticsearch/config/certs/es01/es01.crt
+      xpack.security.http.ssl.key: /usr/share/elasticsearch/config/certs/es01/es01.key
+      xpack.security.transport.ssl.certificate: /usr/share/elasticsearch/config/certs/es01/es01.crt
+      xpack.security.transport.ssl.key: /usr/share/elasticsearch/config/certs/es01/es01.key
+    volumes:
+      - es94-es01-data:/usr/share/elasticsearch/data
+      - ./certs:/usr/share/elasticsearch/config/certs
+
+  es02:
+    <<: *es-common
+    container_name: es94-es02
+    mem_limit: 1g
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    ports:
+      - "9501:9200"
+    environment:
+      <<: *es-env
+      node.name: es02
+      xpack.security.http.ssl.certificate: /usr/share/elasticsearch/config/certs/es02/es02.crt
+      xpack.security.http.ssl.key: /usr/share/elasticsearch/config/certs/es02/es02.key
+      xpack.security.transport.ssl.certificate: /usr/share/elasticsearch/config/certs/es02/es02.crt
+      xpack.security.transport.ssl.key: /usr/share/elasticsearch/config/certs/es02/es02.key
+    volumes:
+      - es94-es02-data:/usr/share/elasticsearch/data
+      - ./certs:/usr/share/elasticsearch/config/certs
+
+  es03:
+    <<: *es-common
+    container_name: es94-es03
+    mem_limit: 1g
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    ports:
+      - "9502:9200"
+    environment:
+      <<: *es-env
+      node.name: es03
+      xpack.security.http.ssl.certificate: /usr/share/elasticsearch/config/certs/es03/es03.crt
+      xpack.security.http.ssl.key: /usr/share/elasticsearch/config/certs/es03/es03.key
+      xpack.security.transport.ssl.certificate: /usr/share/elasticsearch/config/certs/es03/es03.crt
+      xpack.security.transport.ssl.key: /usr/share/elasticsearch/config/certs/es03/es03.key
+    volumes:
+      - es94-es03-data:/usr/share/elasticsearch/data
+      - ./certs:/usr/share/elasticsearch/config/certs
+
+  data-loader:
+      build:
+        context: ../scripts
+      depends_on:
+        es01:
+          condition: service_healthy
+        es02:
+          condition: service_healthy
+        es03:
+          condition: service_healthy
+      volumes:
+        - ../scripts/dummy_data.json:/app/dummy_data.json:ro
+        - ../scripts/audit_policies/:/app/audit_policies/:ro
+        - ./certs/ca/:/app/ca/:ro
+      environment:
+        ELASTIC_SCHEME: https
+        ELASTIC_HOST: es01
+        ELASTIC_PORT: 9200
+        SECURITY_ENABLED: "true"
+        VERIFY_CERTS: "true"
+        CA_CERT_PATH: "/app/ca/ca.crt"
+        ELASTIC_USERNAME: elastic
+        ELASTIC_PASSWORD: changeme
+        TARGET_USERNAME: audit-elasticsearch
+        TARGET_PASSWORD: audit-me
+        INDEX_COUNT: 10
+        TARGET_INDEX_PREFIX: audit-demo-9.4.4
+        ELASTIC_CLIENT_APIVERSIONING: "true"
+        # Défaut pour 8.x et 9.x : audit_policy_8.json.
+        # AUDIT_POLICY_PATH: /app/audit_policies/audit_policy_8.json
+        BULK_CHUNK_SIZE: 500
+        BULK_REQUEST_TIMEOUT: 120
+      command: ["python", "load_data.py"]
+
+  kibana-tokengen:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.4.4
+    container_name: kibana94-tokengen
+    depends_on:
+      es01:
+        condition: service_healthy
+    environment:
+      ELASTIC_PASSWORD: changeme
+    volumes:
+      - ./certs:/certs:rw
+    command: >
+      bash -c '
+        set -euo pipefail
+        TOKEN_FILE=/certs/kibana.service_token
+
+        if [ -s "$$TOKEN_FILE" ]; then
+          echo "Token already exists: $$TOKEN_FILE"
+          exit 0
+        fi
+
+        echo "Waiting for Elasticsearch..."
+        until curl -s -k --cacert /certs/ca/ca.crt -u elastic:$$ELASTIC_PASSWORD https://es94-es01:9200 >/dev/null; do
+          sleep 2
+        done
+
+        echo "Creating Kibana service token..."
+        RESP=$$(curl -s -k --cacert /certs/ca/ca.crt -u elastic:$$ELASTIC_PASSWORD \
+          -X POST https://es94-es01:9200/_security/service/elastic/kibana/credential/token/kibana-docker)
+
+        TOKEN=$$(printf "%s" "$$RESP" | sed -n '"'"'s/.*"value"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'"'"')
+
+        if [ -z "$$TOKEN" ]; then
+          echo "Failed to extract token. Response: $$RESP"
+          exit 1
+        fi
+
+        umask 077
+        printf "%s" "$$TOKEN" > "$$TOKEN_FILE"
+        echo "Saved token to $$TOKEN_FILE"
+      '
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:9.4.4
+    container_name: kibana94
+    mem_limit: 1500m
+    environment:
+      NODE_OPTIONS: --max-old-space-size=1024
+      ELASTICSEARCH_HOSTS: https://es01:9200
+      ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES: /certs/ca/ca.crt
+      SERVER_NAME: kibana94
+      SERVER_HOST: 0.0.0.0
+      SERVER_SSL_ENABLED: "false"
+      XPACK_SECURITY_ENABLED: "true"
+    command: >
+      bash -c '
+        export ELASTICSEARCH_SERVICEACCOUNTTOKEN="$(cat /certs/kibana.service_token)"
+        exec /usr/local/bin/kibana-docker
+      '
+    ports:
+      - "5604:5601"
+    depends_on:
+      es01:
+        condition: service_healthy
+      es02:
+        condition: service_healthy
+      es03:
+        condition: service_healthy
+      kibana-tokengen:
+        condition: service_completed_successfully
+    volumes:
+      - ./certs:/certs:ro
+
+
+volumes:
+  es94-es01-data:
+  es94-es02-data:
+  es94-es03-data:

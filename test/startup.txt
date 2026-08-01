@@ -1,7 +1,17 @@
-docker compose -p es7 -f .\7.17.29\docker-compose.yml up -d
-docker compose -p es8 -f .\8.19.9\docker-compose.yml up -d
-docker compose -p es9 -f .\9.2.3\docker-compose.yml up -d
+docker compose -p es7  -f .\7.17.29\docker-compose.yml up -d
+docker compose -p es8  -f .\8.19.9\docker-compose.yml up -d
+docker compose -p es9  -f .\9.2.3\docker-compose.yml up -d
+docker compose -p es94 -f .\9.4.4\docker-compose.yml up -d
 
-docker compose -p es7 -f .\7.17.29\docker-compose.yml down -v
-docker compose -p es8 -f .\8.19.9\docker-compose.yml down -v
-docker compose -p es9 -f .\9.2.3\docker-compose.yml down -v
+docker compose -p es7  -f .\7.17.29\docker-compose.yml down -v
+docker compose -p es8  -f .\8.19.9\docker-compose.yml down -v
+docker compose -p es9  -f .\9.2.3\docker-compose.yml down -v
+docker compose -p es94 -f .\9.4.4\docker-compose.yml down -v
+
+Une seule stack a la fois : chacune reclame environ 4,5 Go.
+
+Ports Elasticsearch (es01 / es02 / es03) et Kibana :
+  7.17.29   http  9200 9201 9202   kibana 5601
+  8.19.9    https 9300 9301 9302   kibana 5602
+  9.2.3     https 9400 9401 9402   kibana 5603
+  9.4.4     https 9500 9501 9502   kibana 5604

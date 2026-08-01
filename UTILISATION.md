@@ -128,8 +128,14 @@ python main.py --host localhost --port 9300 --scheme https \
     --client-name lab --cluster-typology RECETTE
 ```
 
-Ports : 7.17 sur `9200` en HTTP, 8.19.9 sur `9300` et 9.2.3 sur `9400`, tous
-deux en HTTPS. Une seule stack à la fois : chacune réclame environ 4,5 Go.
+Ports par version — une seule stack à la fois, chacune réclame environ 4,5 Go :
+
+| Version | Schéma | es01 / es02 / es03 | Kibana |
+|---|---|---|---|
+| 7.17.29 | http | 9200 / 9201 / 9202 | 5601 |
+| 8.19.9 | https | 9300 / 9301 / 9302 | 5602 |
+| 9.2.3 | https | 9400 / 9401 / 9402 | 5603 |
+| 9.4.4 | https | 9500 / 9501 / 9502 | 5604 |
 
 ## Coût
 
